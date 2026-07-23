@@ -453,7 +453,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         remaining = 5 - stats_data["today_plays"]
     
     rarity_counts = count_quizzes_by_rarity()
-    rarity_names = {"common": "Обычный", "uncommon": "Необычный", "rare": "Редкий", "epic": "Эпический", "legendary": "Легендарный"}
+    rarity_names = {"common": "Глорповский", "uncommon": "Пустотный", "rare": "Организационный", "epic": "От Междумирца", "legendary": "Прямиком из Тюрьмы времени"}
     rarity_text = "\n".join([f"{RARITY_EMOJI_ONLY.get(r, '')} {rarity_names.get(r, r)}: {rarity_counts.get(r, 0)}" for r in ["common", "uncommon", "rare", "epic", "legendary"]])
     
     photo = None
