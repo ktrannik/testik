@@ -6,8 +6,12 @@ import time
 import asyncio
 import re
 from datetime import datetime, timedelta
+from io import BytesIO
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+
+# ===== РЕБУСЫ =====
+from rebus import expression_to_blocks, draw_rebus_from_blocks, load_dictionary, split_into_parts, find_image_case_insensitive
 
 # ===== НАСТРОЙКИ =====
 TOKEN = os.getenv("BOT_TOKEN")
@@ -16,6 +20,9 @@ QUIZ_FILE = "quizzes.json"
 MEMES_FILE = "memes.json"
 BASE_QUIZZES_DB = "base_quizzes.db"
 USERS_DB = "quiz_users.db"
+
+# Хранилище активных ребусов
+active_rebuses = {}
 
 # ===== РЕДКОСТИ =====
 RARITY_REWARDS = {
@@ -98,6 +105,20 @@ def init_base_quizzes_db():
     conn.close()
     print("✅ База вопросов инициализирована")
 
+# ===== ФУНКЦИИ ДЛЯ РЕБУСОВ =====
+def add_rebus_solve(user_id, user_name):
+    conn = sqlite3.connect(USERS_DB)
+    c = conn.cursor()
+    c.execute('''INSERT INTO rebus_solves (user_id, user_name, solves)
+                 VALUES (?, ?, 1)
+                 ON CONFLICT(user_id) DO UPDATE SET
+                 solves = solves + 1,
+                 user_name = excluded.user_name''',
+              (user_id, user_name))
+    conn.commit()
+    conn.close()
+
+# ===== ОСТАЛЬНЫЕ ФУНКЦИИ =====
 def get_user_stats(user_id):
     conn = sqlite3.connect(USERS_DB)
     c = conn.cursor()
@@ -187,10 +208,7 @@ def count_quizzes_by_rarity():
     conn.close()
     return result
 
-# ===== ПАРСИНГ ВИКТОРИН (ДЛЯ МАССОВОГО ДОБАВЛЕНИЯ) =====
-
 def parse_quiz_line(line):
-    """Парсит одну строку формата: Вопрос (А; Б*; В; Г)"""
     match = re.match(r'^(.+?)\s*\((.+)\)\s*$', line.strip())
     if not match:
         return None
@@ -215,49 +233,16 @@ def parse_quiz_line(line):
     
     return question, cleaned, correct_option_id
 
-# ===== БАЗА ДАННЫХ ДЛЯ ВИКТОРИН =====
-def init_base_quizzes_db():
-    conn = sqlite3.connect(BASE_QUIZZES_DB)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS base_quizzes
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  question TEXT,
-                  options TEXT,
-                  correct_option_id INTEGER,
-                  rarity TEXT DEFAULT 'common',
-                  date TEXT)''')
-    conn.commit()
-    conn.close()
-    print("✅ База вопросов инициализирована")
+# ===== ЗАГРУЗКА МЕМОВ =====
+def load_memes():
+    if not os.path.exists(MEMES_FILE):
+        return []
+    with open(MEMES_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-def add_base_quiz(question, options, correct_option_id):
-    rarity_roll = random.random()
-    if rarity_roll < 0.60:
-        rarity = "common"
-    elif rarity_roll < 0.85:
-        rarity = "uncommon"
-    elif rarity_roll < 0.95:
-        rarity = "rare"
-    elif rarity_roll < 0.99:
-        rarity = "epic"
-    else:
-        rarity = "legendary"
-    
-    conn = sqlite3.connect(BASE_QUIZZES_DB)
-    c = conn.cursor()
-    c.execute('INSERT INTO base_quizzes (question, options, correct_option_id, rarity, date) VALUES (?, ?, ?, ?, ?)',
-              (question, options, correct_option_id, rarity, datetime.now().isoformat()))
-    conn.commit()
-    conn.close()
-    return rarity
-
-def count_quizzes_by_rarity():
-    conn = sqlite3.connect(BASE_QUIZZES_DB)
-    c = conn.cursor()
-    c.execute('SELECT rarity, COUNT(*) FROM base_quizzes GROUP BY rarity')
-    result = dict(c.fetchall())
-    conn.close()
-    return result
+def save_memes(memes):
+    with open(MEMES_FILE, "w", encoding="utf-8") as f:
+        json.dump(memes, f, ensure_ascii=False, indent=2)
 
 # ===== АНТИСПАМ =====
 antispam = {}
@@ -299,27 +284,6 @@ def antispam_decorator(func):
         return await func(update, context)
     return wrapper
 
-# ===== ЗАГРУЗКА ВИКТОРИН (старый формат для совместимости) =====
-def load_quizzes():
-    if not os.path.exists(QUIZ_FILE):
-        return []
-    with open(QUIZ_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def save_quizzes(quizzes):
-    with open(QUIZ_FILE, "w", encoding="utf-8") as f:
-        json.dump(quizzes, f, ensure_ascii=False, indent=2)
-
-def load_memes():
-    if not os.path.exists(MEMES_FILE):
-        return []
-    with open(MEMES_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def save_memes(memes):
-    with open(MEMES_FILE, "w", encoding="utf-8") as f:
-        json.dump(memes, f, ensure_ascii=False, indent=2)
-
 # ===== КОМАНДЫ =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -338,19 +302,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📖 *Помощь по командам:*\n\n"
-        "/quiz — викторина с рейтингом (выбери вариант)\n"
-        "/rebus — отгадай ребус (изображение + слово)\n"
+        "/quiz — викторина с рейтингом\n"
+        "/rebus — отгадай ребус\n"
         "/mm — случайный мем\n"
-        "/stats — моя статистика (аватарка + рейтинг)\n"
-        "/top — топ-10 игроков по викторинам\n"
-        "/rebustop — топ-10 по ребусам\n"
+        "/stats — моя статистика\n"
+        "/top — топ-10 игроков\n"
+        "/rebustop — топ-10 ребусников\n"
         "/donate — поддержать разработку\n"
         "/help — это сообщение\n\n"
         "🎯 *Как получить рейтинг:*\n"
         "Напиши /quiz и выбери правильный ответ.\n"
         "✅ Правильный ответ: +баллы (зависит от редкости)\n"
         "❌ Неправильный ответ: –1 балл\n"
-        "🎮 Ограничение: 5 викторин в день",
+        "🎮 Ограничение: 5 викторин в день\n\n"
+        "🧩 *Как отгадать ребус:*\n"
+        "Напиши /rebus, посмотри на картинку и напиши слово в чат.",
         parse_mode="Markdown"
     )
 
@@ -367,7 +333,7 @@ async def donate(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
-# ===== НОВАЯ ВИКТОРИНА (С БАЛЛАМИ, РАНГАМИ, РЕДКОСТЬЮ) =====
+# ===== ВИКТОРИНА =====
 @antispam_decorator
 async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -386,7 +352,7 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     row = get_random_question(user_id)
     if not row:
-        await update.message.reply_text("📭 В базе нет новых вопросов! Ты уже прошёл все вопросы на сегодня.\n\nВозвращайся завтра или добавь новые через `/basequiz`", parse_mode="Markdown")
+        await update.message.reply_text("📭 В базе нет новых вопросов! Добавь через `/basequiz`", parse_mode="Markdown")
         return
     
     question_id, question, options_raw, correct_option_id, rarity = row
@@ -472,8 +438,6 @@ async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     del context.user_data['quiz_question']
 
-# ===== БЫСТРАЯ ВИКТОРИНА (БЕЗ РЕЙТИНГА) =====
-
 # ===== СТАТИСТИКА =====
 @antispam_decorator
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -532,7 +496,6 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     message = "🏆 Топ-10 игроков:\n\n"
     for i, (user_id, name, score) in enumerate(top_users, 1):
-        # Если имени нет — ставим "Неизвестный"
         name = name or "Неизвестный"
         rank = get_rank(score)
         message += f"{i}. {name} — {score} баллов ({rank['emoji']} {rank['name']})\n"
@@ -553,7 +516,113 @@ async def mm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(f"😂 *Мем от {m['date']}*\n\n👉 [Смотреть мем]({m['link']})", parse_mode="Markdown", disable_web_page_preview=True)
 
+# ===== РЕБУСЫ =====
+async def rebus(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    dictionary = load_dictionary("words.txt")
+    if not dictionary:
+        await update.message.reply_text("❌ База слов пуста")
+        return
+    
+    candidates = [w for w in dictionary if 3 <= len(w) <= 6]
+    if not candidates:
+        candidates = list(dictionary)
+    
+    random.shuffle(candidates)
+    
+    for target_word in candidates[:30]:
+        variants = split_into_parts(target_word, dictionary, max_parts=2)
+        if not variants:
+            continue
+        
+        variant = variants[0]
+        expression = variant["expression"]
+        blocks_data = expression_to_blocks(expression)
+        
+        missing = False
+        for block in blocks_data:
+            if find_image_case_insensitive(block["word"]) is None:
+                missing = True
+                break
+        if missing:
+            continue
+        
+        try:
+            img = draw_rebus_from_blocks(
+                blocks_data,
+                images_dir="images",
+                font_path="fonts/minecraft.ttf",
+                frame_text="ТРЯСЛО993",
+                frame_padding=30,
+                letter_spacing_h=5,
+                letter_spacing_v=7
+            )
+            
+            if img:
+                bio = BytesIO()
+                img.save(bio, format='PNG')
+                bio.seek(0)
+                
+                sent_message = await update.message.reply_photo(
+                    photo=bio,
+                    caption=f"🧩 *Отгадай слово ({len(target_word)} букв)*\n\nПодсказка: первая буква — «{target_word[0]}»",
+                    parse_mode="Markdown"
+                )
+                
+                active_rebuses[update.effective_user.id] = {
+                    "word": target_word,
+                    "message_id": sent_message.message_id,
+                    "chat_id": update.message.chat_id
+                }
+                return
+        except Exception as e:
+            print(f"Ошибка при {target_word}: {e}")
+            continue
+    
+    await update.message.reply_text(
+        "❌ *Не удалось собрать ребус*\n\nПопробуй позже.",
+        parse_mode="Markdown"
+    )
 
+async def rebus_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    conn = sqlite3.connect(USERS_DB)
+    c = conn.cursor()
+    c.execute('''SELECT user_name, solves FROM rebus_solves ORDER BY solves DESC LIMIT 10''')
+    top = c.fetchall()
+    conn.close()
+    
+    if not top:
+        await update.message.reply_text("❌ Пока никто не отгадал ни одного ребуса")
+        return
+    
+    message = "🏆 *Топ ребусников:*\n\n"
+    for i, (name, solves) in enumerate(top, 1):
+        word = "ребус" if solves == 1 else "ребусов"
+        message += f"{i}. *{name}* — {solves} {word}\n"
+    
+    await update.message.reply_text(message, parse_mode="Markdown")
+
+async def check_rebus_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    answer = update.message.text.strip().lower()
+    
+    active = active_rebuses.get(user_id)
+    if not active:
+        return
+    
+    if answer == active["word"].lower():
+        user_name = update.effective_user.first_name
+        add_rebus_solve(user_id, user_name)
+        
+        await update.message.reply_text(
+            f"✅ *{user_name}*, правильно! +1 очко!\n🎉 Загаданное слово: *{active['word']}*",
+            parse_mode="Markdown"
+        )
+        del active_rebuses[user_id]
+    else:
+        await update.message.reply_text(
+            "❌ Неправильно. Попробуй ещё раз или напиши /rebus для нового ребуса.",
+            parse_mode="Markdown"
+        )
 
 # ===== АДМИН-КОМАНДЫ =====
 @antispam_decorator
@@ -565,8 +634,7 @@ async def editstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
         await update.message.reply_text(
             "📝 *Использование:* `/editstats <user_id> количество`\n"
-            "Пример: `/editstats 123456789 15`\n\n"
-            "⚠️ Меняет баллы в топе викторин.",
+            "Пример: `/editstats 123456789 15`",
             parse_mode="Markdown"
         )
         return
@@ -581,7 +649,6 @@ async def editstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect(USERS_DB)
     c = conn.cursor()
     
-    # Обновляем в quiz_stats (основная таблица для баллов)
     c.execute('''
         INSERT INTO quiz_stats (user_id, score, today_plays, last_play_date)
         VALUES (?, ?, 0, ?)
@@ -591,7 +658,6 @@ async def editstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             last_play_date = excluded.last_play_date
     ''', (target_user_id, new_score, datetime.now().date().isoformat()))
     
-    # Обновляем имя в users (если есть)
     c.execute('''
         INSERT INTO users (user_id, first_name, total, rank)
         VALUES (?, ?, ?, ?)
@@ -611,7 +677,7 @@ async def editstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎖️ *Ранг:* {get_rank(new_score)['emoji']} {get_rank(new_score)['name']}",
         parse_mode="Markdown"
     )
-    
+
 @antispam_decorator
 async def edittop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -620,7 +686,12 @@ async def edittop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     conn = sqlite3.connect(USERS_DB)
     c = conn.cursor()
-    c.execute("SELECT user_id, first_name, score FROM users ORDER BY score DESC LIMIT 10")
+    c.execute('''
+        SELECT qs.user_id, u.first_name, qs.score
+        FROM quiz_stats qs
+        LEFT JOIN users u ON qs.user_id = u.user_id
+        ORDER BY qs.score DESC LIMIT 10
+    ''')
     top_users = c.fetchall()
     conn.close()
     
@@ -630,6 +701,7 @@ async def edittop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     message = "🏆 *Топ-10 игроков (для админа):*\n\n"
     for user_id, name, score in top_users:
+        name = name or "Неизвестный"
         rank = get_rank(score)
         message += f"🆔 `{user_id}` — *{name}* — {score} баллов ({rank['emoji']} {rank['name']})\n"
     
@@ -651,8 +723,25 @@ async def base_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Где * — правильный ответ.\n"
         "Каждая викторина с новой строки.\n\n"
         "📎 *Или отправь текстовый файл (.txt) с таким же содержимым.*",
-        parse_mode="None"
+        parse_mode=None
     )
+
+@antispam_decorator
+async def backup_base(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Нет прав")
+        return
+    
+    if not os.path.exists(BASE_QUIZZES_DB):
+        await update.message.reply_text("❌ База вопросов не найдена")
+        return
+    
+    with open(BASE_QUIZZES_DB, 'rb') as f:
+        await update.message.reply_document(
+            document=f,
+            filename=f"base_quizzes_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db",
+            caption="📦 Бэкап базы вопросов"
+        )
 
 @antispam_decorator
 async def backup_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -662,8 +751,6 @@ async def backup_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     conn = sqlite3.connect(USERS_DB)
     c = conn.cursor()
-    
-    # Выгружаем данные из quiz_stats и users
     c.execute('''
         SELECT qs.user_id, u.first_name, qs.score, qs.today_plays, qs.last_play_date
         FROM quiz_stats qs
@@ -677,7 +764,6 @@ async def backup_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Нет данных для бэкапа")
         return
     
-    # Сохраняем в JSON
     backup_data = []
     for row in data:
         backup_data.append({
@@ -700,20 +786,32 @@ async def backup_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     os.remove("top_backup.json")
 
-# ===== РЕБУСЫ (не трогаем) =====
-active_rebuses = {}
+@antispam_decorator
+async def reset_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Нет прав")
+        return
+    
+    conn = sqlite3.connect(USERS_DB)
+    c = conn.cursor()
+    c.execute("DELETE FROM users")
+    c.execute("DELETE FROM quiz_stats")
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text("✅ Топ и статистика полностью сброшены!")
 
-async def rebus(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Функция ребусов остаётся без изменений (я не вставляю полный код ребусов, чтобы не перегружать)
-    await update.message.reply_text("🧩 Ребусы временно отключены. Работаем над обновлением.")
-
-async def rebus_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🏆 *Топ ребусников*\n\nСкоро появится!", parse_mode="Markdown")
-
-# ===== ОБРАБОТЧИК ТЕКСТА (для /basequiz) =====
+# ===== ОБРАБОТЧИКИ ТЕКСТА И ДОКУМЕНТОВ =====
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     step = context.user_data.get('step')
     
+    # --- Сначала проверяем, не ответ ли на ребус ---
+    user_id = update.effective_user.id
+    if user_id in active_rebuses:
+        await check_rebus_answer(update, context)
+        return
+    
+    # --- Потом проверяем, не ждём ли мы basequiz ---
     if step == 'waiting_for_base_quiz':
         text = update.message.text
         lines = text.strip().split('\n')
@@ -733,18 +831,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 errors.append(f"❌ `{line[:40]}...`")
         
-        # Сообщение с результатом
         result = f"✅ *Добавлено викторин: {added}*"
         if errors:
             result += f"\n\n⚠️ *Не удалось распарсить:*\n" + "\n".join(errors[:5])
             if len(errors) > 5:
                 result += f"\n... и ещё {len(errors) - 5} ошибок"
         
-        await update.message.reply_text(result, parse_mode="None")
+        await update.message.reply_text(result, parse_mode=None)
         context.user_data['step'] = None
         return
     
-    # Если ничего не ждём — просто игнор или помощь
+    # Если ничего не ждём
     await update.message.reply_text(
         "❓ Я не понял.\n\n"
         "Команды:\n"
@@ -753,7 +850,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/mm — мем\n"
         "/stats — статистика\n"
         "/top — топ\n"
-        "/base — база\n"
+        "/rebustop — топ ребусников\n"
         "/help — помощь"
     )
 
@@ -779,7 +876,6 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         os.remove(file_path)
         
-        # Обрабатываем как обычный текст
         lines = text.strip().split('\n')
         added = 0
         errors = []
@@ -803,43 +899,11 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if len(errors) > 5:
                 result += f"\n... и ещё {len(errors) - 5} ошибок"
         
-        await update.message.reply_text(result, parse_mode="Markdown")
+        await update.message.reply_text(result, parse_mode=None)
         context.user_data['step'] = None
         
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {e}")
-
-@antispam_decorator
-async def reset_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("⛔ Нет прав")
-        return
-    
-    conn = sqlite3.connect(USERS_DB)
-    c = conn.cursor()
-    c.execute("DELETE FROM users")
-    c.execute("DELETE FROM quiz_stats")
-    conn.commit()
-    conn.close()
-    
-    await update.message.reply_text("✅ Топ и статистика полностью сброшены!")
-
-@antispam_decorator
-async def backup_base(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("⛔ Нет прав")
-        return
-    
-    if not os.path.exists(BASE_QUIZZES_DB):
-        await update.message.reply_text("❌ База вопросов не найдена")
-        return
-    
-    with open(BASE_QUIZZES_DB, 'rb') as f:
-        await update.message.reply_document(
-            document=f,
-            filename=f"base_quizzes_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db",
-            caption="📦 Бэкап базы вопросов"
-        )
 
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
@@ -856,16 +920,16 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("top", top))
     app.add_handler(CommandHandler("mm", mm))
-    app.add_handler(CommandHandler("editstats", editstats))
-    app.add_handler(CommandHandler("edittop", edittop))
-    app.add_handler(CommandHandler("backup_base", backup_base))
-    app.add_handler(CommandHandler("backup_top", backup_top))
-    app.add_handler(CommandHandler("basequiz", base_quiz_command))
     app.add_handler(CommandHandler("rebus", rebus))
     app.add_handler(CommandHandler("rebustop", rebus_top))
+    app.add_handler(CommandHandler("editstats", editstats))
+    app.add_handler(CommandHandler("edittop", edittop))
+    app.add_handler(CommandHandler("basequiz", base_quiz_command))
+    app.add_handler(CommandHandler("backup_base", backup_base))
+    app.add_handler(CommandHandler("backup_top", backup_top))
+    app.add_handler(CommandHandler("reset_top", reset_top))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-    app.add_handler(CommandHandler("reset_top", reset_top))
     
     print("✅ Бот запущен!")
     app.run_polling()
