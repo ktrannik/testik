@@ -565,7 +565,8 @@ async def editstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
         await update.message.reply_text(
             "📝 *Использование:* `/editstats <user_id> количество`\n"
-            "Пример: `/editstats 123456789 15`",
+            "Пример: `/editstats 123456789 15`\n\n"
+            "⚠️ Меняет баллы в топе викторин.",
             parse_mode="Markdown"
         )
         return
@@ -580,20 +581,37 @@ async def editstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect(USERS_DB)
     c = conn.cursor()
     
-    c.execute("SELECT first_name FROM users WHERE user_id = ?", (target_user_id,))
-    row = c.fetchone()
+    # Обновляем в quiz_stats (основная таблица для баллов)
+    c.execute('''
+        INSERT INTO quiz_stats (user_id, score, today_plays, last_play_date)
+        VALUES (?, ?, 0, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            score = excluded.score,
+            today_plays = 0,
+            last_play_date = excluded.last_play_date
+    ''', (target_user_id, new_score, datetime.now().date().isoformat()))
     
-    if row:
-        c.execute("UPDATE users SET score = ? WHERE user_id = ?", (new_score, target_user_id))
-        await update.message.reply_text(f"🔄 Обновлён пользователь {row[0]} (ID: {target_user_id}) → {new_score} баллов")
-    else:
-        c.execute("INSERT INTO users (user_id, first_name, score, rank) VALUES (?, ?, ?, ?)",
-                  (target_user_id, "Неизвестный", new_score, get_rank(new_score)["name"]))
-        await update.message.reply_text(f"✅ Создан пользователь с ID {target_user_id}")
+    # Обновляем имя в users (если есть)
+    c.execute('''
+        INSERT INTO users (user_id, first_name, total, rank)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            first_name = excluded.first_name,
+            total = excluded.total,
+            rank = excluded.rank
+    ''', (target_user_id, "Неизвестный", new_score, get_rank(new_score)["name"]))
     
     conn.commit()
     conn.close()
-
+    
+    await update.message.reply_text(
+        f"✅ *Статистика обновлена:*\n\n"
+        f"🆔 *ID:* {target_user_id}\n"
+        f"🏆 *Баллы:* {new_score}\n"
+        f"🎖️ *Ранг:* {get_rank(new_score)['emoji']} {get_rank(new_score)['name']}",
+        parse_mode="Markdown"
+    )
+    
 @antispam_decorator
 async def edittop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
