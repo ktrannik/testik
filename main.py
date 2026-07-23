@@ -330,7 +330,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/stats — моя статистика\n"
         "/top — топ игроков\n"
         "/rebustop — топ ребусников\n"
-        "/base — количество викторин и мемов\n"
         "/donate — поддержать разработку\n"
         "/help — помощь",
         parse_mode="Markdown"
@@ -345,7 +344,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/stats — моя статистика (аватарка + рейтинг)\n"
         "/top — топ-10 игроков по викторинам\n"
         "/rebustop — топ-10 по ребусам\n"
-        "/base — сколько викторин и мемов в базе\n"
         "/donate — поддержать разработку\n"
         "/help — это сообщение\n\n"
         "🎯 *Как получить рейтинг:*\n"
@@ -548,25 +546,7 @@ async def mm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(f"😂 *Мем от {m['date']}*\n\n👉 [Смотреть мем]({m['link']})", parse_mode="Markdown", disable_web_page_preview=True)
 
-@antispam_decorator
-async def base(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    quizzes = load_quizzes()
-    quiz_count = len(quizzes)
-    memes = load_memes()
-    meme_count = len(memes)
-    
-    rarity_counts = count_quizzes_by_rarity()
-    rarity_names = {"common": "Обычный", "uncommon": "Необычный", "rare": "Редкий", "epic": "Эпический", "legendary": "Легендарный"}
-    rarity_text = "\n".join([f"{RARITY_EMOJI_ONLY.get(r, '')} {rarity_names.get(r, r)}: {rarity_counts.get(r, 0)}" for r in ["common", "uncommon", "rare", "epic", "legendary"]])
-    
-    text = (
-        f"📦 *База данных бота:*\n\n"
-        f"🎯 *Викторин в базе:* {quiz_count + sum(rarity_counts.values())}\n"
-        f"😂 *Мемов:* {meme_count}\n\n"
-        f"📚 *Редкости викторин:*\n{rarity_text}\n\n"
-        f"💡 *Совет:* играй в викторины через /quiz, а мемы через /mm"
-    )
-    await update.message.reply_text(text, parse_mode="Markdown")
+
 
 # ===== АДМИН-КОМАНДЫ =====
 @antispam_decorator
@@ -785,7 +765,6 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("top", top))
     app.add_handler(CommandHandler("mm", mm))
-    app.add_handler(CommandHandler("base", base))
     app.add_handler(CommandHandler("editstats", editstats))
     app.add_handler(CommandHandler("edittop", edittop))
     app.add_handler(CommandHandler("backup", backup))
