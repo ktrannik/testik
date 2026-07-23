@@ -646,7 +646,7 @@ async def base_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Где * — правильный ответ.\n"
         "Каждая викторина с новой строки.\n\n"
         "📎 *Или отправь текстовый файл (.txt) с таким же содержимым.*",
-        parse_mode="Markdown"
+        parse_mode="None"
     )
 
 @antispam_decorator
@@ -701,7 +701,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if len(errors) > 5:
                 result += f"\n... и ещё {len(errors) - 5} ошибок"
         
-        await update.message.reply_text(result, parse_mode="Markdown")
+        await update.message.reply_text(result, parse_mode="None")
         context.user_data['step'] = None
         return
     
