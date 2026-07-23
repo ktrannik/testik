@@ -50,10 +50,10 @@ RARITY_EMOJI_ONLY = {
 }
 
 RANKS = [
-    {"name": "Первичная материя", "min_score": 0, "emoji": "🪴"},
-    {"name": "Мироходец", "min_score": 10, "emoji": "📖"},
-    {"name": "Багрянник", "min_score": 25, "emoji": "🧠"},
-    {"name": "Первый", "min_score": 50, "emoji": "🎯"},
+    {"name": "Первичная материя", "min_score": 0, "emoji": "🔷"},
+    {"name": "Мироходец", "min_score": 10, "emoji": "☀️"},
+    {"name": "Багрянник", "min_score": 25, "emoji": "🩸"},
+    {"name": "Первый", "min_score": 50, "emoji": "🎭"},
     {"name": "Сотрудник Организации", "min_score": 100, "emoji": "💎"},
     {"name": "Гендиректор Организации", "min_score": 200, "emoji": "👑"},
 ]
