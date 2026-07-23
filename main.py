@@ -253,7 +253,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🎯 *Бот викторин и ребусов*\n\n"
         "/quiz — случайная викторина (рейтинг)\n"
-        "/fastqz — быстрая викторина (без рейтинга)\n"
         "/rebus — отгадай ребус\n"
         "/mm — случайный мем\n"
         "/stats — моя статистика\n"
@@ -269,7 +268,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📖 *Помощь по командам:*\n\n"
         "/quiz — викторина с рейтингом (выбери вариант)\n"
-        "/fastqz — быстрая викторина (без рейтинга)\n"
         "/rebus — отгадай ребус (изображение + слово)\n"
         "/mm — случайный мем\n"
         "/stats — моя статистика (аватарка + рейтинг)\n"
@@ -405,62 +403,6 @@ async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
     del context.user_data['quiz_question']
 
 # ===== БЫСТРАЯ ВИКТОРИНА (БЕЗ РЕЙТИНГА) =====
-@antispam_decorator
-async def fastqz(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    row = get_random_question(user_id)
-    if not row:
-        await update.message.reply_text("📭 В базе нет вопросов! Добавь через /basequiz")
-        return
-    
-    question_id, question, options_raw, correct_option_id, rarity = row
-    options = options_raw.split('|||') if options_raw else []
-    reward = RARITY_REWARDS.get(rarity, 1)
-    
-    context.user_data['quiz_question'] = {
-        "question_id": question_id,
-        "question": question,
-        "options": options,
-        "correct_option_id": correct_option_id,
-        "reward": reward,
-        "rarity": rarity,
-        "fast": True
-    }
-    
-    keyboard = []
-    for i, opt in enumerate(options):
-        keyboard.append([InlineKeyboardButton(opt, callback_data=f"fastqz_ans_{i}")])
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(
-        f"⚡ *Быстрая викторина (без рейтинга)*\n\n"
-        f"❓ *{question}*\n\n"
-        f"{RARITY_EMOJIS.get(rarity, '')}",
-        parse_mode="Markdown",
-        reply_markup=reply_markup
-    )
-
-async def handle_fastqz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    q = context.user_data.get('quiz_question')
-    if not q:
-        await query.edit_message_text("❌ Викторина не найдена")
-        return
-    
-    selected = int(query.data.split("_")[-1])
-    correct = q["correct_option_id"]
-    question_id = q.get("question_id")
-    
-    if selected == correct:
-        await query.edit_message_text("✅ *Правильно!* (без рейтинга)", parse_mode="Markdown")
-    else:
-        correct_answer = q["options"][correct]
-        await query.edit_message_text(f"❌ *Неправильно!*\n\nПравильный ответ: *{correct_answer}*", parse_mode="Markdown")
-    
-    del context.user_data['quiz_question']
 
 # ===== СТАТИСТИКА =====
 @antispam_decorator
@@ -698,9 +640,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("donate", donate))
     app.add_handler(CommandHandler("quiz", quiz))
-    app.add_handler(CommandHandler("fastqz", fastqz))
     app.add_handler(CallbackQueryHandler(handle_quiz_answer, pattern="quiz_ans_"))
-    app.add_handler(CallbackQueryHandler(handle_fastqz_answer, pattern="fastqz_ans_"))
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("top", top))
     app.add_handler(CommandHandler("mm", mm))
