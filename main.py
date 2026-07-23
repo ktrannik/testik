@@ -13,7 +13,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # ===== НАСТРОЙКИ =====
-TOKEN = "8637399765:AAHugM5DirEwB64Xw_5UMlTkE-D7N8ZPXGI"
+TOKEN = os.getenv("BOT_TOKEN")
 CACHE_CHAT_ID = -1002546333211  # ← твой ID из шага 2
 ADMIN_ID = 5206039766
 QUIZ_FILE = "quizzes.json"
