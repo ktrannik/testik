@@ -187,6 +187,78 @@ def count_quizzes_by_rarity():
     conn.close()
     return result
 
+# ===== ПАРСИНГ ВИКТОРИН (ДЛЯ МАССОВОГО ДОБАВЛЕНИЯ) =====
+
+def parse_quiz_line(line):
+    """Парсит одну строку формата: Вопрос (А; Б*; В; Г)"""
+    match = re.match(r'^(.+?)\s*\((.+)\)\s*$', line.strip())
+    if not match:
+        return None
+    
+    question = match.group(1).strip()
+    options = [opt.strip() for opt in match.group(2).split(';') if opt.strip()]
+    
+    if len(options) < 2:
+        return None
+    
+    correct_option_id = None
+    cleaned = []
+    for i, opt in enumerate(options):
+        if opt.endswith('*'):
+            correct_option_id = i
+            cleaned.append(opt[:-1].strip())
+        else:
+            cleaned.append(opt)
+    
+    if correct_option_id is None:
+        correct_option_id = 0
+    
+    return question, cleaned, correct_option_id
+
+# ===== БАЗА ДАННЫХ ДЛЯ ВИКТОРИН =====
+def init_base_quizzes_db():
+    conn = sqlite3.connect(BASE_QUIZZES_DB)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS base_quizzes
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  question TEXT,
+                  options TEXT,
+                  correct_option_id INTEGER,
+                  rarity TEXT DEFAULT 'common',
+                  date TEXT)''')
+    conn.commit()
+    conn.close()
+    print("✅ База вопросов инициализирована")
+
+def add_base_quiz(question, options, correct_option_id):
+    rarity_roll = random.random()
+    if rarity_roll < 0.60:
+        rarity = "common"
+    elif rarity_roll < 0.85:
+        rarity = "uncommon"
+    elif rarity_roll < 0.95:
+        rarity = "rare"
+    elif rarity_roll < 0.99:
+        rarity = "epic"
+    else:
+        rarity = "legendary"
+    
+    conn = sqlite3.connect(BASE_QUIZZES_DB)
+    c = conn.cursor()
+    c.execute('INSERT INTO base_quizzes (question, options, correct_option_id, rarity, date) VALUES (?, ?, ?, ?, ?)',
+              (question, options, correct_option_id, rarity, datetime.now().isoformat()))
+    conn.commit()
+    conn.close()
+    return rarity
+
+def count_quizzes_by_rarity():
+    conn = sqlite3.connect(BASE_QUIZZES_DB)
+    c = conn.cursor()
+    c.execute('SELECT rarity, COUNT(*) FROM base_quizzes GROUP BY rarity')
+    result = dict(c.fetchall())
+    conn.close()
+    return result
+
 # ===== АНТИСПАМ =====
 antispam = {}
 
@@ -567,9 +639,14 @@ async def base_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     context.user_data['step'] = 'waiting_for_base_quiz'
     await update.message.reply_text(
-        "📝 Отправь вопрос в формате:\n"
-        "`Вопрос (Вариант 1; Вариант 2*; Вариант 3; Вариант 4)`\n"
-        "Где * — правильный ответ"
+        "📝 *Отправь викторины в формате:*\n\n"
+        "`Вопрос 1 (А; Б*; В; Г)`\n"
+        "`Вопрос 2 (А*; Б; В; Г)`\n"
+        "`Вопрос 3 (А; Б; В*; Г)`\n\n"
+        "Где * — правильный ответ.\n"
+        "Каждая викторина с новой строки.\n\n"
+        "📎 *Или отправь текстовый файл (.txt) с таким же содержимым.*",
+        parse_mode="Markdown"
     )
 
 @antispam_decorator
@@ -596,38 +673,102 @@ async def rebus_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ===== ОБРАБОТЧИК ТЕКСТА (для /basequiz) =====
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get('step') == 'waiting_for_base_quiz':
+    step = context.user_data.get('step')
+    
+    if step == 'waiting_for_base_quiz':
         text = update.message.text
-        match = re.match(r'^(.+?)\s*\((.+)\)\s*$', text.strip())
-        if not match:
-            await update.message.reply_text("❌ Неправильный формат. Нужно: `Вопрос (А; Б*; В; Г)`")
-            return
+        lines = text.strip().split('\n')
+        added = 0
+        errors = []
         
-        question = match.group(1).strip()
-        options = [opt.strip() for opt in match.group(2).split(';') if opt.strip()]
-        if len(options) < 2:
-            await update.message.reply_text("❌ Нужно минимум 2 варианта")
-            return
-        
-        correct_option_id = None
-        cleaned = []
-        for i, opt in enumerate(options):
-            if opt.endswith('*'):
-                correct_option_id = i
-                cleaned.append(opt[:-1].strip())
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            parsed = parse_quiz_line(line)
+            if parsed:
+                question, options, correct_option_id = parsed
+                rarity = add_base_quiz(question, '|||'.join(options), correct_option_id)
+                added += 1
             else:
-                cleaned.append(opt)
+                errors.append(f"❌ `{line[:40]}...`")
         
-        if correct_option_id is None:
-            correct_option_id = 0
+        # Сообщение с результатом
+        result = f"✅ *Добавлено викторин: {added}*"
+        if errors:
+            result += f"\n\n⚠️ *Не удалось распарсить:*\n" + "\n".join(errors[:5])
+            if len(errors) > 5:
+                result += f"\n... и ещё {len(errors) - 5} ошибок"
         
-        rarity = add_base_quiz(question, '|||'.join(cleaned), correct_option_id)
-        await update.message.reply_text(
-            f"✅ Вопрос сохранён!\n"
-            f"❓ {question}\n"
-            f"🎯 Редкость: {RARITY_EMOJIS.get(rarity, rarity)}"
-        )
+        await update.message.reply_text(result, parse_mode="Markdown")
         context.user_data['step'] = None
+        return
+    
+    # Если ничего не ждём — просто игнор или помощь
+    await update.message.reply_text(
+        "❓ Я не понял.\n\n"
+        "Команды:\n"
+        "/quiz — викторина\n"
+        "/rebus — ребус\n"
+        "/mm — мем\n"
+        "/stats — статистика\n"
+        "/top — топ\n"
+        "/base — база\n"
+        "/help — помощь"
+    )
+
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get('step') != 'waiting_for_base_quiz':
+        await update.message.reply_text("❌ Я не жду файл. Напиши /basequiz чтобы начать.")
+        return
+    
+    document = update.message.document
+    if not document.file_name.endswith('.txt'):
+        await update.message.reply_text("❌ Отправь текстовый файл (.txt)")
+        return
+    
+    await update.message.reply_text("📥 Загружаю файл...")
+    
+    try:
+        file = await context.bot.get_file(document.file_id)
+        file_path = f"temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        await file.download_to_drive(file_path)
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            text = f.read()
+        
+        os.remove(file_path)
+        
+        # Обрабатываем как обычный текст
+        lines = text.strip().split('\n')
+        added = 0
+        errors = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            parsed = parse_quiz_line(line)
+            if parsed:
+                question, options, correct_option_id = parsed
+                rarity = add_base_quiz(question, '|||'.join(options), correct_option_id)
+                added += 1
+            else:
+                errors.append(f"❌ `{line[:40]}...`")
+        
+        result = f"✅ *Добавлено викторин из файла: {added}*"
+        if errors:
+            result += f"\n\n⚠️ *Не удалось распарсить:*\n" + "\n".join(errors[:5])
+            if len(errors) > 5:
+                result += f"\n... и ещё {len(errors) - 5} ошибок"
+        
+        await update.message.reply_text(result, parse_mode="Markdown")
+        context.user_data['step'] = None
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
 
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
@@ -652,6 +793,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("rebus", rebus))
     app.add_handler(CommandHandler("rebustop", rebus_top))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     
     print("✅ Бот запущен!")
     app.run_polling()
