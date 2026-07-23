@@ -530,7 +530,7 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
         rank_obj = get_rank(score)
         message += f"{i}. *{name}* — {score} баллов ({rank_obj['emoji']} {rank_obj['name']})\n"
     
-    await update.message.reply_text(message, parse_mode="Markdown")
+    await update.message.reply_text(message, parse_mode="None")
 
 # ===== МЕМЫ =====
 @antispam_decorator
