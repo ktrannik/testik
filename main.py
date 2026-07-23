@@ -749,6 +749,21 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {e}")
 
+@antispam_decorator
+async def reset_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Нет прав")
+        return
+    
+    conn = sqlite3.connect(USERS_DB)
+    c = conn.cursor()
+    c.execute("DELETE FROM users")
+    c.execute("DELETE FROM quiz_stats")
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text("✅ Топ и статистика полностью сброшены!")
+
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
     init_user_db()
@@ -772,6 +787,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("rebustop", rebus_top))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    app.add_handler(CommandHandler("reset_top", reset_top))
     
     print("✅ Бот запущен!")
     app.run_polling()
