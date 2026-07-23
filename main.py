@@ -517,7 +517,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect(USERS_DB)
     c = conn.cursor()
-    c.execute("SELECT user_id, first_name, score, rank FROM users ORDER BY score DESC LIMIT 10")
+    c.execute("SELECT user_id, first_name, total, rank FROM users ORDER BY total DESC LIMIT 10")
     top_users = c.fetchall()
     conn.close()
     
@@ -525,12 +525,11 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Пока никого нет в рейтинге")
         return
     
-    message = "🏆 *Топ-10 игроков:*\n\n"
-    for i, (user_id, name, score, rank) in enumerate(top_users, 1):
-        rank_obj = get_rank(score)
-        message += f"{i}. *{name}* — {score} баллов ({rank_obj['emoji']} {rank_obj['name']})\n"
+    message = "🏆 Топ-10 игроков:\n\n"
+    for i, (user_id, name, total, rank) in enumerate(top_users, 1):
+        message += f"{i}. {name} — {total} баллов ({rank})\n"
     
-    await update.message.reply_text(message, parse_mode="None")
+    await update.message.reply_text(message)
 
 # ===== МЕМЫ =====
 @antispam_decorator
