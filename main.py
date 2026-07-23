@@ -517,7 +517,12 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect(USERS_DB)
     c = conn.cursor()
-    c.execute("SELECT user_id, first_name, total, rank FROM users ORDER BY total DESC LIMIT 10")
+    c.execute('''
+        SELECT qs.user_id, u.first_name, qs.score
+        FROM quiz_stats qs
+        LEFT JOIN users u ON qs.user_id = u.user_id
+        ORDER BY qs.score DESC LIMIT 10
+    ''')
     top_users = c.fetchall()
     conn.close()
     
@@ -526,8 +531,11 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     message = "🏆 Топ-10 игроков:\n\n"
-    for i, (user_id, name, total, rank) in enumerate(top_users, 1):
-        message += f"{i}. {name} — {total} баллов ({rank})\n"
+    for i, (user_id, name, score) in enumerate(top_users, 1):
+        # Если имени нет — ставим "Неизвестный"
+        name = name or "Неизвестный"
+        rank = get_rank(score)
+        message += f"{i}. {name} — {score} баллов ({rank['emoji']} {rank['name']})\n"
     
     await update.message.reply_text(message)
 
