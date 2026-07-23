@@ -637,16 +637,50 @@ async def base_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 @antispam_decorator
-async def backup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def backup_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Нет прав")
         return
     
-    if os.path.exists(USERS_DB):
-        with open(USERS_DB, 'rb') as f:
-            await update.message.reply_document(document=f, filename='quiz_users_backup.db', caption="📦 Резервная копия базы")
-    else:
-        await update.message.reply_text("❌ Файл базы не найден")
+    conn = sqlite3.connect(USERS_DB)
+    c = conn.cursor()
+    
+    # Выгружаем данные из quiz_stats и users
+    c.execute('''
+        SELECT qs.user_id, u.first_name, qs.score, qs.today_plays, qs.last_play_date
+        FROM quiz_stats qs
+        LEFT JOIN users u ON qs.user_id = u.user_id
+        ORDER BY qs.score DESC
+    ''')
+    data = c.fetchall()
+    conn.close()
+    
+    if not data:
+        await update.message.reply_text("❌ Нет данных для бэкапа")
+        return
+    
+    # Сохраняем в JSON
+    backup_data = []
+    for row in data:
+        backup_data.append({
+            "user_id": row[0],
+            "first_name": row[1] or "Неизвестный",
+            "score": row[2],
+            "today_plays": row[3],
+            "last_play_date": row[4]
+        })
+    
+    with open("top_backup.json", "w", encoding="utf-8") as f:
+        json.dump(backup_data, f, ensure_ascii=False, indent=2)
+    
+    with open("top_backup.json", "rb") as f:
+        await update.message.reply_document(
+            document=f,
+            filename=f"top_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            caption="📦 Бэкап топа викторин"
+        )
+    
+    os.remove("top_backup.json")
 
 # ===== РЕБУСЫ (не трогаем) =====
 active_rebuses = {}
@@ -772,6 +806,23 @@ async def reset_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text("✅ Топ и статистика полностью сброшены!")
 
+@antispam_decorator
+async def backup_base(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Нет прав")
+        return
+    
+    if not os.path.exists(BASE_QUIZZES_DB):
+        await update.message.reply_text("❌ База вопросов не найдена")
+        return
+    
+    with open(BASE_QUIZZES_DB, 'rb') as f:
+        await update.message.reply_document(
+            document=f,
+            filename=f"base_quizzes_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db",
+            caption="📦 Бэкап базы вопросов"
+        )
+
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
     init_user_db()
@@ -789,7 +840,8 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("mm", mm))
     app.add_handler(CommandHandler("editstats", editstats))
     app.add_handler(CommandHandler("edittop", edittop))
-    app.add_handler(CommandHandler("backup", backup))
+    app.add_handler(CommandHandler("backup_base", backup_base))
+    app.add_handler(CommandHandler("backup_top", backup_top))
     app.add_handler(CommandHandler("basequiz", base_quiz_command))
     app.add_handler(CommandHandler("rebus", rebus))
     app.add_handler(CommandHandler("rebustop", rebus_top))
