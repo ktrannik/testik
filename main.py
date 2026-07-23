@@ -34,11 +34,11 @@ RARITY_REWARDS = {
 }
 
 RARITY_EMOJIS = {
-    "common": "⬜ Обычный",
-    "uncommon": "🟩 Необычный",
-    "rare": "🟦 Редкий",
-    "epic": "🟪 Эпический",
-    "legendary": "🟧 Легендарный"
+    "common": "⬜ Глорповский",
+    "uncommon": "🟩 Пустотный",
+    "rare": "🟦 Организационный",
+    "epic": "🟪 от Междумирца",
+    "legendary": "⬛ Прямиком из Тюрьмы Времени"
 }
 
 RARITY_EMOJI_ONLY = {
@@ -46,16 +46,16 @@ RARITY_EMOJI_ONLY = {
     "uncommon": "🟩",
     "rare": "🟦",
     "epic": "🟪",
-    "legendary": "🟧"
+    "legendary": "⬛"
 }
 
 RANKS = [
-    {"name": "Новичок", "min_score": 0, "emoji": "🪴"},
-    {"name": "Знаток", "min_score": 10, "emoji": "📖"},
-    {"name": "Эрудит", "min_score": 25, "emoji": "🧠"},
-    {"name": "Мастер", "min_score": 50, "emoji": "🎯"},
-    {"name": "Гений", "min_score": 100, "emoji": "💎"},
-    {"name": "Легенда", "min_score": 200, "emoji": "👑"},
+    {"name": "Первичная материя", "min_score": 0, "emoji": "🪴"},
+    {"name": "Мироходец", "min_score": 10, "emoji": "📖"},
+    {"name": "Багрянник", "min_score": 25, "emoji": "🧠"},
+    {"name": "Первый", "min_score": 50, "emoji": "🎯"},
+    {"name": "Сотрудник Организации", "min_score": 100, "emoji": "💎"},
+    {"name": "Гендиректор Организации", "min_score": 200, "emoji": "👑"},
 ]
 
 def get_rank(score):
@@ -352,7 +352,7 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     row = get_random_question(user_id)
     if not row:
-        await update.message.reply_text("📭 В базе нет новых вопросов! Добавь через `/basequiz`", parse_mode="Markdown")
+        await update.message.reply_text("📭 В базе нет новых вопросов! ", parse_mode="Markdown")
         return
     
     question_id, question, options_raw, correct_option_id, rarity = row
