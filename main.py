@@ -5,6 +5,7 @@ import os
 import time
 import asyncio
 import re
+import shutil
 from datetime import datetime, timedelta
 from io import BytesIO
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -1041,6 +1042,99 @@ async def update_names(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+@antispam_decorator
+async def backup_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Нет прав")
+        return
+    
+    if not os.path.exists(BASE_QUIZZES_DB):
+        await update.message.reply_text("❌ База вопросов не найдена")
+        return
+    
+    with open(BASE_QUIZZES_DB, 'rb') as f:
+        await update.message.reply_document(
+            document=f,
+            filename=f"quizzes_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db",
+            caption="📦 Бэкап базы вопросов (с редкостями)"
+        )
+
+@antispam_decorator
+async def restore_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Нет прав")
+        return
+    
+    reply = update.message.reply_to_message
+    if not reply or not reply.document:
+        await update.message.reply_text(
+            "❌ Как восстановить базу вопросов:\n\n"
+            "1. Отправь файл quizzes_backup_*.db\n"
+            "2. Нажми на него → 'Ответить'\n"
+            "3. Напиши /restore_quizzes\n\n"
+            "Команда должна быть ответом на сообщение с файлом!"
+        )
+        return
+    
+    document = reply.document
+    if not document.file_name.endswith('.db'):
+        await update.message.reply_text("❌ Файл должен быть в формате .db")
+        return
+    
+    await update.message.reply_text("📥 Загружаю файл...")
+    
+    try:
+        file = await context.bot.get_file(document.file_id)
+        file_path = f"restore_quizzes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+        await file.download_to_drive(file_path)
+        
+        # Проверяем, что файл — это SQLite база с таблицей base_quizzes
+        try:
+            conn_check = sqlite3.connect(file_path)
+            c_check = conn_check.cursor()
+            c_check.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='base_quizzes'")
+            if not c_check.fetchone():
+                await update.message.reply_text("❌ Файл не содержит таблицу base_quizzes")
+                os.remove(file_path)
+                conn_check.close()
+                return
+            conn_check.close()
+        except:
+            await update.message.reply_text("❌ Файл повреждён или это не SQLite база")
+            os.remove(file_path)
+            return
+        
+        # Заменяем текущую базу
+        shutil.copy2(file_path, BASE_QUIZZES_DB)
+        
+        # Проверяем, сколько записей загружено
+        conn = sqlite3.connect(BASE_QUIZZES_DB)
+        c = conn.cursor()
+        c.execute('SELECT COUNT(*) FROM base_quizzes')
+        count = c.fetchone()[0]
+        
+        # Считаем по редкостям
+        c.execute('SELECT rarity, COUNT(*) FROM base_quizzes GROUP BY rarity')
+        rarity_stats = dict(c.fetchall())
+        conn.close()
+        
+        os.remove(file_path)
+        
+        rarity_text = "\n".join([f"  {RARITY_EMOJIS.get(r, r)}: {count}" for r, count in rarity_stats.items()])
+        
+        await update.message.reply_text(
+            f"✅ База вопросов восстановлена!\n\n"
+            f"📊 Загружено вопросов: {count}\n"
+            f"📁 Файл: {document.file_name}\n\n"
+            f"📚 Распределение по редкостям:\n{rarity_text}\n\n"
+            f"Теперь можно играть через /quiz"
+        )
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка восстановления: {e}")
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
     init_user_db()
@@ -1068,6 +1162,8 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(CommandHandler("restore_top", restore_top))
     app.add_handler(CommandHandler("update_names", update_names))
+    app.add_handler(CommandHandler("backup_quizzes", backup_quizzes))
+    app.add_handler(CommandHandler("restore_quizzes", restore_quizzes))
     
     print("✅ Бот запущен!")
     app.run_polling()
