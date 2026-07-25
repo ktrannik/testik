@@ -919,7 +919,7 @@ async def restore_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "2. Нажми на него → 'Ответить'\n"
             "3. Напиши `/restore_top`\n\n"
             "📌 Команда должна быть ответом на сообщение с файлом!",
-            parse_mode="Markdown"
+           
         )
         return
     
@@ -986,7 +986,7 @@ async def restore_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📊 Восстановлено записей: {restored}\n"
             f"📁 Файл: {document.file_name}\n\n"
             f"Теперь можно проверить через `/top`",
-            parse_mode="Markdown"
+           
         )
         
     except Exception as e:
