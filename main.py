@@ -994,6 +994,53 @@ async def restore_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if os.path.exists(file_path):
             os.remove(file_path)
 
+@antispam_decorator
+async def update_names(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Нет прав")
+        return
+    
+    await update.message.reply_text("🔄 Обновляю имена пользователей...")
+    
+    conn = sqlite3.connect(USERS_DB)
+    c = conn.cursor()
+    
+    # Получаем всех пользователей из quiz_stats
+    c.execute("SELECT user_id FROM quiz_stats")
+    users = c.fetchall()
+    
+    updated = 0
+    for (user_id,) in users:
+        try:
+            chat = await context.bot.get_chat(user_id)
+            first_name = chat.first_name or "Неизвестный"
+            
+            c.execute('''
+                UPDATE users SET first_name = ? WHERE user_id = ?
+            ''', (first_name, user_id))
+            
+            if c.rowcount == 0:
+                # Если пользователя нет в users — создаём
+                c.execute('''
+                    INSERT INTO users (user_id, first_name, total, rank)
+                    SELECT ?, ?, score, rank FROM quiz_stats WHERE user_id = ?
+                ''', (user_id, first_name, user_id))
+            
+            updated += 1
+            print(f"✅ Обновлён: {first_name} (ID: {user_id})")
+            
+        except Exception as e:
+            print(f"❌ Не удалось обновить {user_id}: {e}")
+    
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ *Обновлено имён: {updated}*\n\n"
+        f"Теперь проверь `/top`",
+        parse_mode="Markdown"
+    )
+
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
     init_user_db()
@@ -1020,6 +1067,7 @@ if __name__ == "__main__":
     # app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(CommandHandler("restore_top", restore_top))
+    app.add_handler(CommandHandler("update_names", update_names))
     
     print("✅ Бот запущен!")
     app.run_polling()
