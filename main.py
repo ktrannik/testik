@@ -905,6 +905,95 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {e}")
 
+@antispam_decorator
+async def restore_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Нет прав")
+        return
+    
+    reply = update.message.reply_to_message
+    if not reply or not reply.document:
+        await update.message.reply_text(
+            "❌ *Как восстановить топ:*\n\n"
+            "1. Отправь файл `top_backup_*.json`\n"
+            "2. Нажми на него → 'Ответить'\n"
+            "3. Напиши `/restore_top`\n\n"
+            "📌 Команда должна быть ответом на сообщение с файлом!",
+            parse_mode="Markdown"
+        )
+        return
+    
+    document = reply.document
+    if not document.file_name.endswith('.json'):
+        await update.message.reply_text("❌ Файл должен быть в формате `.json`")
+        return
+    
+    await update.message.reply_text("📥 Загружаю файл...")
+    
+    try:
+        file = await context.bot.get_file(document.file_id)
+        file_path = f"restore_top_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        await file.download_to_drive(file_path)
+        
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
+        if not data or not isinstance(data, list):
+            await update.message.reply_text("❌ Файл повреждён или не содержит данных")
+            os.remove(file_path)
+            return
+        
+        conn = sqlite3.connect(USERS_DB)
+        c = conn.cursor()
+        
+        # Очищаем старые данные перед восстановлением
+        c.execute("DELETE FROM quiz_stats")
+        c.execute("DELETE FROM users")
+        
+        restored = 0
+        for item in data:
+            user_id = item.get("user_id")
+            first_name = item.get("first_name", "Неизвестный")
+            score = item.get("score", 0)
+            today_plays = item.get("today_plays", 0)
+            last_play_date = item.get("last_play_date", datetime.now().date().isoformat())
+            
+            if not user_id:
+                continue
+            
+            # Восстанавливаем в quiz_stats
+            c.execute('''
+                INSERT INTO quiz_stats (user_id, score, today_plays, last_play_date)
+                VALUES (?, ?, ?, ?)
+            ''', (user_id, score, today_plays, last_play_date))
+            
+            # Восстанавливаем в users
+            rank = get_rank(score)
+            c.execute('''
+                INSERT INTO users (user_id, first_name, total, rank)
+                VALUES (?, ?, ?, ?)
+            ''', (user_id, first_name, score, rank["name"]))
+            
+            restored += 1
+        
+        conn.commit()
+        conn.close()
+        
+        os.remove(file_path)
+        
+        await update.message.reply_text(
+            f"✅ *Топ восстановлен!*\n\n"
+            f"📊 Восстановлено записей: {restored}\n"
+            f"📁 Файл: {document.file_name}\n\n"
+            f"Теперь можно проверить через `/top`",
+            parse_mode="Markdown"
+        )
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка восстановления: {e}")
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
     init_user_db()
@@ -928,8 +1017,9 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("backup_base", backup_base))
     app.add_handler(CommandHandler("backup_top", backup_top))
     app.add_handler(CommandHandler("reset_top", reset_top))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    # app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    app.add_handler(CommandHandler("restore_top", restore_top))
     
     print("✅ Бот запущен!")
     app.run_polling()
