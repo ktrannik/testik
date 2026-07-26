@@ -855,6 +855,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/help — помощь"
     )
 
+async def check_rebus_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    answer = update.message.text.strip().lower()
+    
+    active = active_rebuses.get(user_id)
+    if not active:
+        return  # нет активного ребуса — просто игнорируем
+    
+    if answer == active["word"].lower():
+        user_name = update.effective_user.first_name
+        add_rebus_solve(user_id, user_name)
+        
+        await update.message.reply_text(
+            f"✅ *{user_name}*, правильно! +1 очко!\n🎉 Загаданное слово: *{active['word']}*",
+            parse_mode="Markdown"
+        )
+        del active_rebuses[user_id]
+    else:
+        await update.message.reply_text(
+            "❌ Неправильно. Попробуй ещё раз или напиши /rebus для нового ребуса.",
+            parse_mode="Markdown"
+        )
+
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get('step') != 'waiting_for_base_quiz':
         await update.message.reply_text("❌ Я не жду файл. Напиши /basequiz чтобы начать.")
@@ -1159,6 +1182,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("backup_top", backup_top))
     app.add_handler(CommandHandler("reset_top", reset_top))
     # app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_rebus_answer))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(CommandHandler("restore_top", restore_top))
     app.add_handler(CommandHandler("update_names", update_names))
