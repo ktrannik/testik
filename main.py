@@ -277,6 +277,12 @@ def check_antispam(user_id):
 def antispam_decorator(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
+        
+        # Очищаем активный ребус при любой команде (включая /rebus)
+        if update.message and update.message.text and update.message.text.startswith('/'):
+            if user_id in active_rebuses:
+                del active_rebuses[user_id]
+        
         allowed, msg = check_antispam(user_id)
         if not allowed:
             if msg:
