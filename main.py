@@ -495,14 +495,26 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Пока никого нет в рейтинге")
         return
     
-    message = "🏆 Топ-10 игроков:\n\n"
+    message = "🏆 *Топ-10 игроков:*\n\n"
     for i, (user_id, name, score) in enumerate(top_users, 1):
-        name = name or "Неизвестный"
+        # Если имя пустое или "Неизвестный" — пробуем получить через Telegram API
+        if not name or name == "Неизвестный":
+            try:
+                chat = await context.bot.get_chat(user_id)
+                name = chat.first_name or chat.username or "Неизвестный"
+                # Обновляем в базе
+                conn = sqlite3.connect(USERS_DB)
+                c2 = conn.cursor()
+                c2.execute('UPDATE users SET first_name = ? WHERE user_id = ?', (name, user_id))
+                conn.commit()
+                conn.close()
+            except:
+                name = "Неизвестный"
+        
         rank = get_rank(score)
-        message += f"{i}. {name} — {score} баллов ({rank['emoji']} {rank['name']})\n"
+        message += f"{i}. *{name}* — {score} баллов ({rank['emoji']} {rank['name']})\n"
     
-    await update.message.reply_text(message)
-
+    await update.message.reply_text(message, parse_mode="Markdown")
 # ===== МЕМЫ =====
 @antispam_decorator
 async def mm(update: Update, context: ContextTypes.DEFAULT_TYPE):
