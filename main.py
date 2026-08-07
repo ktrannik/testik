@@ -146,8 +146,9 @@ def update_user_stats(user_id, score, today_plays, last_play_date):
 def get_played_question_ids(user_id):
     conn = sqlite3.connect(USERS_DB)
     c = conn.cursor()
+    today = datetime.now().date().isoformat()
     c.execute('''SELECT quiz_id FROM completions
-                 WHERE user_id = ? AND DATE(completed_at) = ?''', (user_id,))
+                 WHERE user_id = ? AND DATE(completed_at) = ?''', (user_id, today))
     rows = c.fetchall()
     conn.close()
     return [row[0] for row in rows]
@@ -164,23 +165,17 @@ def get_random_question(user_id):
     played_ids = get_played_question_ids(user_id)
     conn = sqlite3.connect(BASE_QUIZZES_DB)
     c = conn.cursor()
-    
-    # Получаем все ID из базы
-    c.execute('SELECT id FROM base_quizzes')
-    all_ids = [row[0] for row in c.fetchall()]
-    
-    # Находим те, которые ещё не пройдены
-    available_ids = [qid for qid in all_ids if qid not in played_ids]
-    
-    if not available_ids:
-        conn.close()
-        return None  # Все викторины пройдены
-    
-    # Берём случайный ID из доступных
-    import random
-    random_id = random.choice(available_ids)
-    
-    c.execute('SELECT id, question, options, correct_option_id, rarity FROM base_quizzes WHERE id = ?', (random_id,))
+
+    if played_ids:
+        placeholders = ','.join(['?'] * len(played_ids))
+        c.execute(f'''
+            SELECT id, question, options, correct_option_id, rarity FROM base_quizzes
+            WHERE id NOT IN ({placeholders})
+            ORDER BY RANDOM() LIMIT 1
+        ''', played_ids)
+    else:
+        c.execute('SELECT id, question, options, correct_option_id, rarity FROM base_quizzes ORDER BY RANDOM() LIMIT 1')
+
     row = c.fetchone()
     conn.close()
     return row
@@ -197,7 +192,7 @@ def add_base_quiz(question, options, correct_option_id):
         rarity = "epic"
     else:
         rarity = "legendary"
-    
+
     conn = sqlite3.connect(BASE_QUIZZES_DB)
     c = conn.cursor()
     c.execute('INSERT INTO base_quizzes (question, options, correct_option_id, rarity, date) VALUES (?, ?, ?, ?, ?)',
@@ -218,13 +213,13 @@ def parse_quiz_line(line):
     match = re.match(r'^(.+?)\s*\((.+)\)\s*$', line.strip())
     if not match:
         return None
-    
+
     question = match.group(1).strip()
     options = [opt.strip() for opt in match.group(2).split(';') if opt.strip()]
-    
+
     if len(options) < 2:
         return None
-    
+
     correct_option_id = None
     cleaned = []
     for i, opt in enumerate(options):
@@ -233,10 +228,10 @@ def parse_quiz_line(line):
             cleaned.append(opt[:-1].strip())
         else:
             cleaned.append(opt)
-    
+
     if correct_option_id is None:
         correct_option_id = 0
-    
+
     return question, cleaned, correct_option_id
 
 # ===== ЗАГРУЗКА МЕМОВ =====
@@ -256,16 +251,16 @@ antispam = {}
 def check_antispam(user_id):
     now = time.time()
     user = antispam.get(user_id, {"blocked_until": 0, "last_command": 0, "count": 0})
-    
+
     if user["blocked_until"] > now:
         wait = int(user["blocked_until"] - now)
         return False, f"🚫 *Стоп!* Ты в спам-бане `{wait}` сек."
-    
+
     if now - user["last_command"] < 2.0:
         user["count"] += 1
         user["last_command"] = now
         antispam[user_id] = user
-        
+
         if user["count"] >= 2:
             user["blocked_until"] = now + 20
             user["count"] = 0
@@ -273,7 +268,7 @@ def check_antispam(user_id):
             return False, "🚫 *Спам-детект!* Блокировка на 20 сек."
         else:
             return False, ""
-    
+
     user["count"] = 0
     user["last_command"] = now
     antispam[user_id] = user
@@ -282,12 +277,12 @@ def check_antispam(user_id):
 def antispam_decorator(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
-        
+
         # Очищаем активный ребус при любой команде (включая /rebus)
         if update.message and update.message.text and update.message.text.startswith('/'):
             if user_id in active_rebuses:
                 del active_rebuses[user_id]
-        
+
         allowed, msg = check_antispam(user_id)
         if not allowed:
             if msg:
@@ -351,30 +346,26 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     first_name = update.effective_user.first_name
     today = datetime.now().date().isoformat()
-    
+
     stats = get_user_stats(user_id)
     if stats["last_play_date"] != today:
         stats["today_plays"] = 0
         stats["last_play_date"] = today
         update_user_stats(user_id, stats["score"], 0, today)
-    
+
     if stats["today_plays"] >= 5:
         await update.message.reply_text("❌ Ты уже прошёл 5 викторин сегодня! Возвращайся завтра.")
         return
-    
+
     row = get_random_question(user_id)
     if not row:
-        await update.message.reply_text(
-            "🎉 *Ты прошёл все викторины!*\n\n"
-            "Больше нет новых вопросов.\n",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text("📭 В базе нет новых вопросов! ", parse_mode="Markdown")
         return
-    
+
     question_id, question, options_raw, correct_option_id, rarity = row
     options = options_raw.split('|||') if options_raw else []
     reward = RARITY_REWARDS.get(rarity, 1)
-    
+
     context.user_data['quiz_question'] = {
         "question_id": question_id,
         "question": question,
@@ -383,12 +374,12 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "reward": reward,
         "rarity": rarity
     }
-    
+
     keyboard = []
     for i, opt in enumerate(options):
         keyboard.append([InlineKeyboardButton(opt, callback_data=f"quiz_ans_{i}")])
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     rank = get_rank(stats["score"])
     await update.message.reply_text(
         f"❓ *{question}*\n\n"
@@ -404,34 +395,34 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
+
     user_id = query.from_user.id
     first_name = query.from_user.first_name
-    
+
     q = context.user_data.get('quiz_question')
     if not q:
         await query.edit_message_text("❌ Викторина не найдена. Попробуй /quiz заново")
         return
-    
+
     selected = int(query.data.split("_")[-1])
     correct = q["correct_option_id"]
     reward = q.get("reward", 1)
     rarity = q.get("rarity", "common")
     question_id = q.get("question_id")
-    
+
     stats = get_user_stats(user_id)
     old_rank = get_rank(stats["score"])
-    
+
     if selected == correct:
         stats["score"] += reward
         new_rank = get_rank(stats["score"])
         update_user_stats(user_id, stats["score"], stats["today_plays"] + 1, datetime.now().date().isoformat())
         mark_question_as_played(user_id, question_id)
-        
+
         rank_up_msg = ""
         if new_rank["min_score"] > old_rank["min_score"]:
             rank_up_msg = f"\n\n🎉 **ПОВЫШЕНИЕ РАНГА!**\n{old_rank['emoji']} {old_rank['name']} → {new_rank['emoji']} {new_rank['name']}"
-        
+
         await query.edit_message_text(
             f"✅ *Правильно!* +{reward} баллов {RARITY_EMOJI_ONLY.get(rarity, '')}{rank_up_msg}\n\n"
             f"🏆 Баллы: {stats['score']}\n"
@@ -442,7 +433,7 @@ async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
         stats["score"] -= 1
         update_user_stats(user_id, stats["score"], stats["today_plays"] + 1, datetime.now().date().isoformat())
         mark_question_as_played(user_id, question_id)
-        
+
         correct_answer = q["options"][correct]
         await query.edit_message_text(
             f"❌ *Неправильно!* –1 балл\n\n"
@@ -451,7 +442,7 @@ async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"🎖️ Ранг: {old_rank['emoji']} {old_rank['name']}",
             parse_mode="Markdown"
         )
-    
+
     del context.user_data['quiz_question']
 
 # ===== СТАТИСТИКА =====
@@ -462,16 +453,16 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stats_data = get_user_stats(user_id)
     rank = get_rank(stats_data["score"])
     today = datetime.now().date().isoformat()
-    
+
     if stats_data["last_play_date"] != today:
         remaining = 5
     else:
         remaining = 5 - stats_data["today_plays"]
-    
+
     rarity_counts = count_quizzes_by_rarity()
     rarity_names = {"common": "Глорповский", "uncommon": "Пустотный", "rare": "Организационный", "epic": "От Междумирца", "legendary": "Прямиком из Тюрьмы времени"}
     rarity_text = "\n".join([f"{RARITY_EMOJI_ONLY.get(r, '')} {rarity_names.get(r, r)}: {rarity_counts.get(r, 0)}" for r in ["common", "uncommon", "rare", "epic", "legendary"]])
-    
+
     photo = None
     try:
         photos = await context.bot.get_user_profile_photos(user.id, limit=1)
@@ -479,7 +470,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             photo = photos.photos[0][-1].file_id
     except:
         pass
-    
+
     text = (
         f"📊 *Статистика {user.first_name}*\n\n"
         f"🏆 Баллы: {stats_data['score']}\n"
@@ -487,7 +478,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎮 Осталось попыток сегодня: {remaining}/5\n\n"
         f"📚 *Вопросы в базе:*\n{rarity_text}"
     )
-    
+
     if photo:
         await update.message.reply_photo(photo=photo, caption=text, parse_mode="Markdown")
     else:
@@ -505,11 +496,11 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ''')
     top_users = c.fetchall()
     conn.close()
-    
+
     if not top_users:
         await update.message.reply_text("❌ Пока никого нет в рейтинге")
         return
-    
+
     message = "🏆 *Топ-10 игроков:*\n\n"
     for i, (user_id, name, score) in enumerate(top_users, 1):
         # Если имя пустое или "Неизвестный" — пробуем получить через Telegram API
@@ -525,10 +516,10 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 conn.close()
             except:
                 name = "Неизвестный"
-        
+
         rank = get_rank(score)
         message += f"{i}. *{name}* — {score} баллов ({rank['emoji']} {rank['name']})\n"
-    
+
     await update.message.reply_text(message, parse_mode="Markdown")
 # ===== МЕМЫ =====
 @antispam_decorator
@@ -537,7 +528,7 @@ async def mm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not memes:
         await update.message.reply_text("❌ Мемов пока нет")
         return
-    
+
     m = random.choice(memes)
     if 'img_url' in m and m['img_url']:
         await update.message.reply_photo(photo=m['img_url'], caption=f"😂 *Мем от {m['date']}*", parse_mode="Markdown")
@@ -550,22 +541,22 @@ async def rebus(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not dictionary:
         await update.message.reply_text("❌ База слов пуста")
         return
-    
+
     candidates = [w for w in dictionary if 3 <= len(w) <= 6]
     if not candidates:
         candidates = list(dictionary)
-    
+
     random.shuffle(candidates)
-    
+
     for target_word in candidates[:30]:
         variants = split_into_parts(target_word, dictionary, max_parts=2)
         if not variants:
             continue
-        
+
         variant = variants[0]
         expression = variant["expression"]
         blocks_data = expression_to_blocks(expression)
-        
+
         missing = False
         for block in blocks_data:
             if find_image_case_insensitive(block["word"]) is None:
@@ -573,7 +564,7 @@ async def rebus(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 break
         if missing:
             continue
-        
+
         try:
             img = draw_rebus_from_blocks(
                 blocks_data,
@@ -584,18 +575,18 @@ async def rebus(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 letter_spacing_h=5,
                 letter_spacing_v=7
             )
-            
+
             if img:
                 bio = BytesIO()
                 img.save(bio, format='PNG')
                 bio.seek(0)
-                
+
                 sent_message = await update.message.reply_photo(
                     photo=bio,
                     caption=f"🧩 *Отгадай слово ({len(target_word)} букв)*\n\nПодсказка: первая буква — «{target_word[0]}»",
                     parse_mode="Markdown"
                 )
-                
+
                 active_rebuses[update.effective_user.id] = {
                     "word": target_word,
                     "message_id": sent_message.message_id,
@@ -605,7 +596,7 @@ async def rebus(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             print(f"Ошибка при {target_word}: {e}")
             continue
-    
+
     await update.message.reply_text(
         "❌ *Не удалось собрать ребус*\n\nПопробуй позже.",
         parse_mode="Markdown"
@@ -617,30 +608,30 @@ async def rebus_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     c.execute('''SELECT user_name, solves FROM rebus_solves ORDER BY solves DESC LIMIT 10''')
     top = c.fetchall()
     conn.close()
-    
+
     if not top:
         await update.message.reply_text("❌ Пока никто не отгадал ни одного ребуса")
         return
-    
+
     message = "🏆 *Топ ребусников:*\n\n"
     for i, (name, solves) in enumerate(top, 1):
         word = "ребус" if solves == 1 else "ребусов"
         message += f"{i}. *{name}* — {solves} {word}\n"
-    
+
     await update.message.reply_text(message, parse_mode="Markdown")
 
 async def check_rebus_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     answer = update.message.text.strip().lower()
-    
+
     active = active_rebuses.get(user_id)
     if not active:
         return
-    
+
     if answer == active["word"].lower():
         user_name = update.effective_user.first_name
         add_rebus_solve(user_id, user_name)
-        
+
         await update.message.reply_text(
             f"✅ *{user_name}*, правильно! +1 очко!\n🎉 Загаданное слово: *{active['word']}*",
             parse_mode="Markdown"
@@ -658,7 +649,7 @@ async def editstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Нет прав")
         return
-    
+
     if len(context.args) < 2:
         await update.message.reply_text(
             "📝 *Использование:* `/editstats <user_id> количество`\n"
@@ -666,17 +657,17 @@ async def editstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
         return
-    
+
     try:
         target_user_id = int(context.args[0])
         new_score = int(context.args[1])
     except:
         await update.message.reply_text("❌ Оба аргумента должны быть числами")
         return
-    
+
     conn = sqlite3.connect(USERS_DB)
     c = conn.cursor()
-    
+
     c.execute('''
         INSERT INTO quiz_stats (user_id, score, today_plays, last_play_date)
         VALUES (?, ?, 0, ?)
@@ -685,7 +676,7 @@ async def editstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             today_plays = 0,
             last_play_date = excluded.last_play_date
     ''', (target_user_id, new_score, datetime.now().date().isoformat()))
-    
+
     c.execute('''
         INSERT INTO users (user_id, first_name, total, rank)
         VALUES (?, ?, ?, ?)
@@ -694,10 +685,10 @@ async def editstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             total = excluded.total,
             rank = excluded.rank
     ''', (target_user_id, "Неизвестный", new_score, get_rank(new_score)["name"]))
-    
+
     conn.commit()
     conn.close()
-    
+
     await update.message.reply_text(
         f"✅ *Статистика обновлена:*\n\n"
         f"🆔 *ID:* {target_user_id}\n"
@@ -711,7 +702,7 @@ async def edittop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Нет прав")
         return
-    
+
     conn = sqlite3.connect(USERS_DB)
     c = conn.cursor()
     c.execute('''
@@ -722,17 +713,17 @@ async def edittop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ''')
     top_users = c.fetchall()
     conn.close()
-    
+
     if not top_users:
         await update.message.reply_text("❌ Топ пуст")
         return
-    
+
     message = "🏆 *Топ-10 игроков (для админа):*\n\n"
     for user_id, name, score in top_users:
         name = name or "Неизвестный"
         rank = get_rank(score)
         message += f"🆔 `{user_id}` — *{name}* — {score} баллов ({rank['emoji']} {rank['name']})\n"
-    
+
     message += "\n📝 *Изменить статистику:* `/editstats <user_id> количество`"
     await update.message.reply_text(message, parse_mode="Markdown")
 
@@ -741,7 +732,7 @@ async def base_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Нет прав")
         return
-    
+
     context.user_data['step'] = 'waiting_for_base_quiz'
     await update.message.reply_text(
         "📝 *Отправь викторины в формате:*\n\n"
@@ -759,11 +750,11 @@ async def backup_base(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Нет прав")
         return
-    
+
     if not os.path.exists(BASE_QUIZZES_DB):
         await update.message.reply_text("❌ База вопросов не найдена")
         return
-    
+
     with open(BASE_QUIZZES_DB, 'rb') as f:
         await update.message.reply_document(
             document=f,
@@ -776,7 +767,7 @@ async def backup_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Нет прав")
         return
-    
+
     conn = sqlite3.connect(USERS_DB)
     c = conn.cursor()
     c.execute('''
@@ -787,11 +778,11 @@ async def backup_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ''')
     data = c.fetchall()
     conn.close()
-    
+
     if not data:
         await update.message.reply_text("❌ Нет данных для бэкапа")
         return
-    
+
     backup_data = []
     for row in data:
         backup_data.append({
@@ -801,17 +792,17 @@ async def backup_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "today_plays": row[3],
             "last_play_date": row[4]
         })
-    
+
     with open("top_backup.json", "w", encoding="utf-8") as f:
         json.dump(backup_data, f, ensure_ascii=False, indent=2)
-    
+
     with open("top_backup.json", "rb") as f:
         await update.message.reply_document(
             document=f,
             filename=f"top_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
             caption="📦 Бэкап топа викторин"
         )
-    
+
     os.remove("top_backup.json")
 
 @antispam_decorator
@@ -819,38 +810,38 @@ async def reset_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Нет прав")
         return
-    
+
     conn = sqlite3.connect(USERS_DB)
     c = conn.cursor()
     c.execute("DELETE FROM users")
     c.execute("DELETE FROM quiz_stats")
     conn.commit()
     conn.close()
-    
+
     await update.message.reply_text("✅ Топ и статистика полностью сброшены!")
 
 # ===== ОБРАБОТЧИКИ ТЕКСТА И ДОКУМЕНТОВ =====
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     step = context.user_data.get('step')
-    
+
     # --- Сначала проверяем, не ответ ли на ребус ---
     user_id = update.effective_user.id
     if user_id in active_rebuses:
         await check_rebus_answer(update, context)
         return
-    
+
     # --- Потом проверяем, не ждём ли мы basequiz ---
     if step == 'waiting_for_base_quiz':
         text = update.message.text
         lines = text.strip().split('\n')
         added = 0
         errors = []
-        
+
         for line in lines:
             line = line.strip()
             if not line:
                 continue
-            
+
             parsed = parse_quiz_line(line)
             if parsed:
                 question, options, correct_option_id = parsed
@@ -858,17 +849,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 added += 1
             else:
                 errors.append(f"❌ `{line[:40]}...`")
-        
+
         result = f"✅ *Добавлено викторин: {added}*"
         if errors:
             result += f"\n\n⚠️ *Не удалось распарсить:*\n" + "\n".join(errors[:5])
             if len(errors) > 5:
                 result += f"\n... и ещё {len(errors) - 5} ошибок"
-        
+
         await update.message.reply_text(result, parse_mode=None)
         context.user_data['step'] = None
         return
-    
+
     # Если ничего не ждём
     await update.message.reply_text(
         "❓ Я не понял.\n\n"
@@ -885,15 +876,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def check_rebus_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     answer = update.message.text.strip().lower()
-    
+
     active = active_rebuses.get(user_id)
     if not active:
         return  # нет активного ребуса — просто игнорируем
-    
+
     if answer == active["word"].lower():
         user_name = update.effective_user.first_name
         add_rebus_solve(user_id, user_name)
-        
+
         await update.message.reply_text(
             f"✅ *{user_name}*, правильно! +1 очко!\n🎉 Загаданное слово: *{active['word']}*",
             parse_mode="Markdown"
@@ -909,33 +900,33 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get('step') != 'waiting_for_base_quiz':
         await update.message.reply_text("❌ Я не жду файл. Напиши /basequiz чтобы начать.")
         return
-    
+
     document = update.message.document
     if not document.file_name.endswith('.txt'):
         await update.message.reply_text("❌ Отправь текстовый файл (.txt)")
         return
-    
+
     await update.message.reply_text("📥 Загружаю файл...")
-    
+
     try:
         file = await context.bot.get_file(document.file_id)
         file_path = f"temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         await file.download_to_drive(file_path)
-        
+
         with open(file_path, 'r', encoding='utf-8') as f:
             text = f.read()
-        
+
         os.remove(file_path)
-        
+
         lines = text.strip().split('\n')
         added = 0
         errors = []
-        
+
         for line in lines:
             line = line.strip()
             if not line:
                 continue
-            
+
             parsed = parse_quiz_line(line)
             if parsed:
                 question, options, correct_option_id = parsed
@@ -943,16 +934,16 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 added += 1
             else:
                 errors.append(f"❌ `{line[:40]}...`")
-        
+
         result = f"✅ *Добавлено викторин из файла: {added}*"
         if errors:
             result += f"\n\n⚠️ *Не удалось распарсить:*\n" + "\n".join(errors[:5])
             if len(errors) > 5:
                 result += f"\n... и ещё {len(errors) - 5} ошибок"
-        
+
         await update.message.reply_text(result, parse_mode=None)
         context.user_data['step'] = None
-        
+
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {e}")
 
@@ -961,7 +952,7 @@ async def restore_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Нет прав")
         return
-    
+
     reply = update.message.reply_to_message
     if not reply or not reply.document:
         await update.message.reply_text(
@@ -970,37 +961,37 @@ async def restore_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "2. Нажми на него → 'Ответить'\n"
             "3. Напиши `/restore_top`\n\n"
             "📌 Команда должна быть ответом на сообщение с файлом!",
-           
+
         )
         return
-    
+
     document = reply.document
     if not document.file_name.endswith('.json'):
         await update.message.reply_text("❌ Файл должен быть в формате `.json`")
         return
-    
+
     await update.message.reply_text("📥 Загружаю файл...")
-    
+
     try:
         file = await context.bot.get_file(document.file_id)
         file_path = f"restore_top_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         await file.download_to_drive(file_path)
-        
+
         with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        
+
         if not data or not isinstance(data, list):
             await update.message.reply_text("❌ Файл повреждён или не содержит данных")
             os.remove(file_path)
             return
-        
+
         conn = sqlite3.connect(USERS_DB)
         c = conn.cursor()
-        
+
         # Очищаем старые данные перед восстановлением
         c.execute("DELETE FROM quiz_stats")
         c.execute("DELETE FROM users")
-        
+
         restored = 0
         for item in data:
             user_id = item.get("user_id")
@@ -1008,38 +999,38 @@ async def restore_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
             score = item.get("score", 0)
             today_plays = item.get("today_plays", 0)
             last_play_date = item.get("last_play_date", datetime.now().date().isoformat())
-            
+
             if not user_id:
                 continue
-            
+
             # Восстанавливаем в quiz_stats
             c.execute('''
                 INSERT INTO quiz_stats (user_id, score, today_plays, last_play_date)
                 VALUES (?, ?, ?, ?)
             ''', (user_id, score, today_plays, last_play_date))
-            
+
             # Восстанавливаем в users
             rank = get_rank(score)
             c.execute('''
                 INSERT INTO users (user_id, first_name, total, rank)
                 VALUES (?, ?, ?, ?)
             ''', (user_id, first_name, score, rank["name"]))
-            
+
             restored += 1
-        
+
         conn.commit()
         conn.close()
-        
+
         os.remove(file_path)
-        
+
         await update.message.reply_text(
             f"✅ *Топ восстановлен!*\n\n"
             f"📊 Восстановлено записей: {restored}\n"
             f"📁 Файл: {document.file_name}\n\n"
             f"Теперь можно проверить через `/top`",
-           
+
         )
-        
+
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка восстановления: {e}")
         if os.path.exists(file_path):
@@ -1050,42 +1041,42 @@ async def update_names(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Нет прав")
         return
-    
+
     await update.message.reply_text("🔄 Обновляю имена пользователей...")
-    
+
     conn = sqlite3.connect(USERS_DB)
     c = conn.cursor()
-    
+
     # Получаем всех пользователей из quiz_stats
     c.execute("SELECT user_id FROM quiz_stats")
     users = c.fetchall()
-    
+
     updated = 0
     for (user_id,) in users:
         try:
             chat = await context.bot.get_chat(user_id)
             first_name = chat.first_name or "Неизвестный"
-            
+
             c.execute('''
                 UPDATE users SET first_name = ? WHERE user_id = ?
             ''', (first_name, user_id))
-            
+
             if c.rowcount == 0:
                 # Если пользователя нет в users — создаём
                 c.execute('''
                     INSERT INTO users (user_id, first_name, total, rank)
                     SELECT ?, ?, score, rank FROM quiz_stats WHERE user_id = ?
                 ''', (user_id, first_name, user_id))
-            
+
             updated += 1
             print(f"✅ Обновлён: {first_name} (ID: {user_id})")
-            
+
         except Exception as e:
             print(f"❌ Не удалось обновить {user_id}: {e}")
-    
+
     conn.commit()
     conn.close()
-    
+
     await update.message.reply_text(
         f"✅ *Обновлено имён: {updated}*\n\n"
         f"Теперь проверь `/top`",
@@ -1097,11 +1088,11 @@ async def backup_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Нет прав")
         return
-    
+
     if not os.path.exists(BASE_QUIZZES_DB):
         await update.message.reply_text("❌ База вопросов не найдена")
         return
-    
+
     with open(BASE_QUIZZES_DB, 'rb') as f:
         await update.message.reply_document(
             document=f,
@@ -1114,7 +1105,7 @@ async def restore_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Нет прав")
         return
-    
+
     reply = update.message.reply_to_message
     if not reply or not reply.document:
         await update.message.reply_text(
@@ -1125,19 +1116,19 @@ async def restore_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Команда должна быть ответом на сообщение с файлом!"
         )
         return
-    
+
     document = reply.document
     if not document.file_name.endswith('.db'):
         await update.message.reply_text("❌ Файл должен быть в формате .db")
         return
-    
+
     await update.message.reply_text("📥 Загружаю файл...")
-    
+
     try:
         file = await context.bot.get_file(document.file_id)
         file_path = f"restore_quizzes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
         await file.download_to_drive(file_path)
-        
+
         # Проверяем, что файл — это SQLite база с таблицей base_quizzes
         try:
             conn_check = sqlite3.connect(file_path)
@@ -1153,25 +1144,25 @@ async def restore_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Файл повреждён или это не SQLite база")
             os.remove(file_path)
             return
-        
+
         # Заменяем текущую базу
         shutil.copy2(file_path, BASE_QUIZZES_DB)
-        
+
         # Проверяем, сколько записей загружено
         conn = sqlite3.connect(BASE_QUIZZES_DB)
         c = conn.cursor()
         c.execute('SELECT COUNT(*) FROM base_quizzes')
         count = c.fetchone()[0]
-        
+
         # Считаем по редкостям
         c.execute('SELECT rarity, COUNT(*) FROM base_quizzes GROUP BY rarity')
         rarity_stats = dict(c.fetchall())
         conn.close()
-        
+
         os.remove(file_path)
-        
+
         rarity_text = "\n".join([f"  {RARITY_EMOJIS.get(r, r)}: {count}" for r, count in rarity_stats.items()])
-        
+
         await update.message.reply_text(
             f"✅ База вопросов восстановлена!\n\n"
             f"📊 Загружено вопросов: {count}\n"
@@ -1179,7 +1170,7 @@ async def restore_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📚 Распределение по редкостям:\n{rarity_text}\n\n"
             f"Теперь можно играть через /quiz"
         )
-        
+
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка восстановления: {e}")
         if os.path.exists(file_path):
@@ -1189,9 +1180,9 @@ async def restore_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == "__main__":
     init_user_db()
     init_base_quizzes_db()
-    
+
     app = Application.builder().token(TOKEN).build()
-    
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("donate", donate))
@@ -1215,6 +1206,6 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("update_names", update_names))
     app.add_handler(CommandHandler("backup_quizzes", backup_quizzes))
     app.add_handler(CommandHandler("restore_quizzes", restore_quizzes))
-    
+
     print("✅ Бот запущен!")
     app.run_polling()
