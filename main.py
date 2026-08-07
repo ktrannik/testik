@@ -146,7 +146,6 @@ def update_user_stats(user_id, score, today_plays, last_play_date):
 def get_played_question_ids(user_id):
     conn = sqlite3.connect(USERS_DB)
     c = conn.cursor()
-    today = datetime.now().date().isoformat()
     c.execute('''SELECT quiz_id FROM completions
                  WHERE user_id = ? AND DATE(completed_at) = ?''', (user_id, today))
     rows = c.fetchall()
