@@ -147,7 +147,7 @@ def get_played_question_ids(user_id):
     conn = sqlite3.connect(USERS_DB)
     c = conn.cursor()
     c.execute('''SELECT quiz_id FROM completions
-                 WHERE user_id = ? AND DATE(completed_at) = ?''', (user_id, today))
+                 WHERE user_id = ? AND DATE(completed_at) = ?''', (user_id,))
     rows = c.fetchall()
     conn.close()
     return [row[0] for row in rows]
