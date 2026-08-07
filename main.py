@@ -165,16 +165,22 @@ def get_random_question(user_id):
     conn = sqlite3.connect(BASE_QUIZZES_DB)
     c = conn.cursor()
     
-    if played_ids:
-        placeholders = ','.join(['?'] * len(played_ids))
-        c.execute(f'''
-            SELECT id, question, options, correct_option_id, rarity FROM base_quizzes
-            WHERE id NOT IN ({placeholders})
-            ORDER BY RANDOM() LIMIT 1
-        ''', played_ids)
-    else:
-        c.execute('SELECT id, question, options, correct_option_id, rarity FROM base_quizzes ORDER BY RANDOM() LIMIT 1')
+    # Получаем все ID из базы
+    c.execute('SELECT id FROM base_quizzes')
+    all_ids = [row[0] for row in c.fetchall()]
     
+    # Находим те, которые ещё не пройдены
+    available_ids = [qid for qid in all_ids if qid not in played_ids]
+    
+    if not available_ids:
+        conn.close()
+        return None  # Все викторины пройдены
+    
+    # Берём случайный ID из доступных
+    import random
+    random_id = random.choice(available_ids)
+    
+    c.execute('SELECT id, question, options, correct_option_id, rarity FROM base_quizzes WHERE id = ?', (random_id,))
     row = c.fetchone()
     conn.close()
     return row
@@ -358,7 +364,11 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     row = get_random_question(user_id)
     if not row:
-        await update.message.reply_text("📭 В базе нет новых вопросов! ", parse_mode="Markdown")
+        await update.message.reply_text(
+            "🎉 *Ты прошёл все викторины!*\n\n"
+            "Больше нет новых вопросов.\n"
+            parse_mode="Markdown"
+        )
         return
     
     question_id, question, options_raw, correct_option_id, rarity = row
