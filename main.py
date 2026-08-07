@@ -366,7 +366,7 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not row:
         await update.message.reply_text(
             "🎉 *Ты прошёл все викторины!*\n\n"
-            "Больше нет новых вопросов.\n"
+            "Больше нет новых вопросов.\n",
             parse_mode="Markdown"
         )
         return
