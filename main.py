@@ -1176,6 +1176,61 @@ async def restore_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if os.path.exists(file_path):
             os.remove(file_path)
 
+@antispam_decorator
+async def editrebus(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Нет прав")
+        return
+    
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "📝 *Использование:* `/editrebus <user_id> количество`\n"
+            "Пример: `/editrebus 123456789 15`\n\n"
+            "⚠️ Меняет количество решённых ребусов у пользователя.",
+            parse_mode="Markdown"
+        )
+        return
+    
+    try:
+        target_user_id = int(context.args[0])
+        new_solves = int(context.args[1])
+    except:
+        await update.message.reply_text("❌ Оба аргумента должны быть числами")
+        return
+    
+    conn = sqlite3.connect(USERS_DB)
+    c = conn.cursor()
+    
+    # Проверяем, есть ли пользователь в таблице rebus_solves
+    c.execute('SELECT user_name FROM rebus_solves WHERE user_id = ?', (target_user_id,))
+    row = c.fetchone()
+    
+    if row:
+        user_name = row[0]
+        c.execute('UPDATE rebus_solves SET solves = ? WHERE user_id = ?', (new_solves, target_user_id))
+        await update.message.reply_text(f"🔄 Обновлён пользователь {user_name} (ID: {target_user_id}) → {new_solves} ребусов")
+    else:
+        # Если пользователя нет — создаём
+        await update.message.reply_text(
+            f"❌ Пользователь с ID {target_user_id} не найден в топе ребусов.\n\n"
+            f"Сначала он должен отгадать хотя бы один ребус через /rebus,\n"
+            f"или укажи имя вручную:\n"
+            f"`/editrebus_name {target_user_id} Имя {new_solves}`",
+            parse_mode="Markdown"
+        )
+        conn.close()
+        return
+    
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ *Статистика ребусов обновлена:*\n\n"
+        f"🆔 *ID:* {target_user_id}\n"
+        f"🧩 *Решено ребусов:* {new_solves}",
+        parse_mode="Markdown"
+    )
+
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
     init_user_db()
@@ -1206,6 +1261,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("update_names", update_names))
     app.add_handler(CommandHandler("backup_quizzes", backup_quizzes))
     app.add_handler(CommandHandler("restore_quizzes", restore_quizzes))
+    app.add_handler(CommandHandler("editrebus", editrebus))
 
     print("✅ Бот запущен!")
     app.run_polling()
