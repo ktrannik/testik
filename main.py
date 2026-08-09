@@ -732,7 +732,7 @@ async def base_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Нет прав")
         return
-
+    
     context.user_data['step'] = 'waiting_for_base_quiz'
     await update.message.reply_text(
         "📝 *Отправь викторины в формате:*\n\n"
@@ -1230,6 +1230,114 @@ async def editrebus(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+@antispam_decorator
+async def backup_rebus(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Нет прав")
+        return
+    
+    conn = sqlite3.connect(USERS_DB)
+    c = conn.cursor()
+    c.execute("SELECT user_id, user_name, solves FROM rebus_solves ORDER BY solves DESC")
+    data = c.fetchall()
+    conn.close()
+    
+    if not data:
+        await update.message.reply_text("❌ Нет данных о ребусах")
+        return
+    
+    backup_data = [{"user_id": row[0], "user_name": row[1], "solves": row[2]} for row in data]
+    
+    with open("rebus_backup.json", "w", encoding="utf-8") as f:
+        json.dump(backup_data, f, ensure_ascii=False, indent=2)
+    
+    with open("rebus_backup.json", "rb") as f:
+        await update.message.reply_document(
+            document=f,
+            filename=f"rebus_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            caption="📦 Бэкап топа ребусников"
+        )
+    
+    os.remove("rebus_backup.json")
+
+@antispam_decorator
+async def restore_rebus(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ Нет прав")
+        return
+    
+    reply = update.message.reply_to_message
+    if not reply or not reply.document:
+        await update.message.reply_text(
+            "❌ Как восстановить топ ребусов:\n\n"
+            "1. Отправь файл rebus_backup_*.json\n"
+            "2. Нажми на него -> 'Ответить'\n"
+            "3. Напиши /restore_rebus\n\n"
+            "Команда должна быть ответом на сообщение с файлом!"
+        )
+        return
+    
+    document = reply.document
+    if not document.file_name.endswith('.json'):
+        await update.message.reply_text("❌ Файл должен быть в формате .json")
+        return
+    
+    await update.message.reply_text("📥 Загружаю файл...")
+    
+    try:
+        file = await context.bot.get_file(document.file_id)
+        file_path = f"restore_rebus_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        await file.download_to_drive(file_path)
+        
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
+        if not data or not isinstance(data, list):
+            await update.message.reply_text("❌ Файл повреждён или не содержит данных")
+            os.remove(file_path)
+            return
+        
+        conn = sqlite3.connect(USERS_DB)
+        c = conn.cursor()
+        
+        # Очищаем старые данные
+        c.execute("DELETE FROM rebus_solves")
+        
+        restored = 0
+        for item in data:
+            user_id = item.get("user_id")
+            user_name = item.get("user_name", "Неизвестный")
+            solves = item.get("solves", 0)
+            
+            if not user_id:
+                continue
+            
+            c.execute('''
+                INSERT INTO rebus_solves (user_id, user_name, solves)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    user_name = excluded.user_name,
+                    solves = excluded.solves
+            ''', (user_id, user_name, solves))
+            
+            restored += 1
+        
+        conn.commit()
+        conn.close()
+        os.remove(file_path)
+        
+        await update.message.reply_text(
+            f"✅ Топ ребусов восстановлен!\n\n"
+            f"Восстановлено записей: {restored}\n"
+            f"Файл: {document.file_name}\n\n"
+            f"Теперь можно проверить через /rebustop"
+        )
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка восстановления: {e}")
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
     init_user_db()
@@ -1261,6 +1369,8 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("backup_quizzes", backup_quizzes))
     app.add_handler(CommandHandler("restore_quizzes", restore_quizzes))
     app.add_handler(CommandHandler("editrebus", editrebus))
+    app.add_handler(CommandHandler("backup_rebus", backup_rebus))
+    app.add_handler(CommandHandler("restore_rebus", restore_rebus))
 
     print("✅ Бот запущен!")
     app.run_polling()
