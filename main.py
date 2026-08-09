@@ -897,36 +897,36 @@ async def check_rebus_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Если бот не ждёт файл для basequiz — просто игнорируем
     if context.user_data.get('step') != 'waiting_for_base_quiz':
-        await update.message.reply_text("❌ Я не жду файл. Напиши /basequiz чтобы начать.")
-        return
-
+        return  # ← ПРОСТО МОЛЧИМ
+    
     document = update.message.document
     if not document.file_name.endswith('.txt'):
         await update.message.reply_text("❌ Отправь текстовый файл (.txt)")
         return
-
+    
     await update.message.reply_text("📥 Загружаю файл...")
-
+    
     try:
         file = await context.bot.get_file(document.file_id)
         file_path = f"temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         await file.download_to_drive(file_path)
-
+        
         with open(file_path, 'r', encoding='utf-8') as f:
             text = f.read()
-
+        
         os.remove(file_path)
-
+        
         lines = text.strip().split('\n')
         added = 0
         errors = []
-
+        
         for line in lines:
             line = line.strip()
             if not line:
                 continue
-
+            
             parsed = parse_quiz_line(line)
             if parsed:
                 question, options, correct_option_id = parsed
@@ -934,19 +934,18 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 added += 1
             else:
                 errors.append(f"❌ `{line[:40]}...`")
-
+        
         result = f"✅ *Добавлено викторин из файла: {added}*"
         if errors:
             result += f"\n\n⚠️ *Не удалось распарсить:*\n" + "\n".join(errors[:5])
             if len(errors) > 5:
                 result += f"\n... и ещё {len(errors) - 5} ошибок"
-
+        
         await update.message.reply_text(result, parse_mode=None)
         context.user_data['step'] = None
-
+        
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {e}")
-
 @antispam_decorator
 async def restore_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
