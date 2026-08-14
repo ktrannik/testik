@@ -56,7 +56,11 @@ RANKS = [
     {"name": "Багрянник", "min_score": 25, "emoji": "🩸"},
     {"name": "Первый", "min_score": 50, "emoji": "🎭"},
     {"name": "Сотрудник Организации", "min_score": 100, "emoji": "💎"},
+    {"name": "Кондуктор Синклита", "min_score": 150, "emoji": "💎"},
     {"name": "Гендиректор Организации", "min_score": 200, "emoji": "👑"},
+    {"name": "Единый Таймлайн", "min_score": 300, "emoji": "👑"},
+    {"name": "Программист ST", "min_score": 400, "emoji": "👑"},
+    {"name": "Сценарист ST", "min_score": 500, "emoji": "👑"},
 ]
 
 def get_rank(score):
