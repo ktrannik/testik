@@ -350,26 +350,31 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     first_name = update.effective_user.first_name
     today = datetime.now().date().isoformat()
-
+    
     stats = get_user_stats(user_id)
     if stats["last_play_date"] != today:
         stats["today_plays"] = 0
         stats["last_play_date"] = today
         update_user_stats(user_id, stats["score"], 0, today)
-
+    
+    # === ПОПЫТКА ЗАСЧИТЫВАЕТСЯ СРАЗУ ===
     if stats["today_plays"] >= 5:
         await update.message.reply_text("❌ Ты уже прошёл 5 викторин сегодня! Возвращайся завтра.")
         return
-
+    
+    # Увеличиваем счётчик попыток ДО выдачи вопроса
+    stats["today_plays"] += 1
+    update_user_stats(user_id, stats["score"], stats["today_plays"], today)
+    
     row = get_random_question(user_id)
     if not row:
-        await update.message.reply_text("📭 В базе нет новых вопросов! ", parse_mode="Markdown")
+        await update.message.reply_text("📭 В базе нет новых вопросов! Добавь через `/basequiz`", parse_mode="Markdown")
         return
-
+    
     question_id, question, options_raw, correct_option_id, rarity = row
     options = options_raw.split('|||') if options_raw else []
     reward = RARITY_REWARDS.get(rarity, 1)
-
+    
     context.user_data['quiz_question'] = {
         "question_id": question_id,
         "question": question,
@@ -378,12 +383,12 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "reward": reward,
         "rarity": rarity
     }
-
+    
     keyboard = []
     for i, opt in enumerate(options):
         keyboard.append([InlineKeyboardButton(opt, callback_data=f"quiz_ans_{i}")])
     reply_markup = InlineKeyboardMarkup(keyboard)
-
+    
     rank = get_rank(stats["score"])
     await update.message.reply_text(
         f"❓ *{question}*\n\n"
@@ -391,7 +396,7 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎁 Награда: +{reward} баллов\n\n"
         f"🏆 Твои баллы: {stats['score']}\n"
         f"🎖️ Ранг: {rank['emoji']} {rank['name']}\n"
-        f"🎮 Осталось попыток: {5 - stats['today_plays']}",
+        f"🎮 Осталось попыток сегодня: {5 - stats['today_plays']}",
         parse_mode="Markdown",
         reply_markup=reply_markup
     )
