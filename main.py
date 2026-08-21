@@ -361,9 +361,9 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ты уже прошёл 5 викторин сегодня! Возвращайся завтра.")
         return
     
-    # === БЛОКИРУЕМ НОВЫЙ ВЫЗОВ, ЕСЛИ ЕСТЬ АКТИВНЫЙ ВОПРОС ===
+    # === БЛОКИРУЕМ НОВЫЙ ВЫЗОВ, ПОКА НЕ ОТВЕЧЕН СТАРЫЙ ВОПРОС ===
     if context.user_data.get('quiz_question'):
-        await update.message.reply_text("❌ У тебя уже есть активный вопрос! Ответь на него или подожди 5 минут.")
+        await update.message.reply_text("❌ У тебя уже есть активный вопрос! Ответь на него, чтобы получить новый.")
         return
     
     # === ЗАСЧИТЫВАЕМ ПОПЫТКУ ===
@@ -405,7 +405,7 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
         reply_markup=reply_markup
     )
-
+    
 async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
