@@ -405,18 +405,25 @@ async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     
-    if not context.user_data.get('quiz_active'):
+    user_id = query.from_user.id
+    
+    # Проверяем, есть ли активный вопрос у этого пользователя
+    quiz_data = context.user_data.get('quiz_question')
+    is_active = context.user_data.get('quiz_active', False)
+    
+    if not is_active or not quiz_data:
         await query.edit_message_text("⏳ Этот вопрос уже неактивен. Напиши /quiz для новой викторины.")
         return
     
-    user_id = query.from_user.id
-    first_name = query.from_user.first_name
-    
-    q = context.user_data.get('quiz_question')
-    if not q:
-        await query.edit_message_text("❌ Викторина не найдена. Попробуй /quiz заново")
+    # Проверяем, не устарел ли вопрос (если есть время)
+    quiz_time = context.user_data.get('quiz_time', 0)
+    if quiz_time and time.time() - quiz_time > 300:
         context.user_data['quiz_active'] = False
+        await query.edit_message_text("⏳ Вопрос устарел (прошло больше 5 минут). Напиши /quiz для новой викторины.")
         return
+    
+    first_name = query.from_user.first_name
+    q = quiz_data
     
     selected = int(query.data.split("_")[-1])
     correct = q["correct_option_id"]
@@ -427,12 +434,12 @@ async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
     stats = get_user_stats(user_id)
     old_rank = get_rank(stats["score"])
     
+    # Снимаем флаг активного вопроса
     context.user_data['quiz_active'] = False
     
     if selected == correct:
         stats["score"] += reward
         new_rank = get_rank(stats["score"])
-        # ОБНОВЛЯЕМ ТОЛЬКО SCORE, today_plays НЕ ТРОГАЕМ!
         update_user_stats(user_id, stats["score"], stats["today_plays"], datetime.now().date().isoformat())
         mark_question_as_played(user_id, question_id)
         
@@ -448,7 +455,6 @@ async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
     else:
         stats["score"] -= 1
-        # ОБНОВЛЯЕМ ТОЛЬКО SCORE, today_plays НЕ ТРОГАЕМ!
         update_user_stats(user_id, stats["score"], stats["today_plays"], datetime.now().date().isoformat())
         mark_question_as_played(user_id, question_id)
         
