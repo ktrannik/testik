@@ -404,34 +404,42 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
+    
+    if not context.user_data.get('quiz_active'):
+        await query.edit_message_text("⏳ Этот вопрос уже неактивен. Напиши /quiz для новой викторины.")
+        return
+    
     user_id = query.from_user.id
     first_name = query.from_user.first_name
-
+    
     q = context.user_data.get('quiz_question')
     if not q:
         await query.edit_message_text("❌ Викторина не найдена. Попробуй /quiz заново")
+        context.user_data['quiz_active'] = False
         return
-
+    
     selected = int(query.data.split("_")[-1])
     correct = q["correct_option_id"]
     reward = q.get("reward", 1)
     rarity = q.get("rarity", "common")
     question_id = q.get("question_id")
-
+    
     stats = get_user_stats(user_id)
     old_rank = get_rank(stats["score"])
-
+    
+    context.user_data['quiz_active'] = False
+    
     if selected == correct:
         stats["score"] += reward
         new_rank = get_rank(stats["score"])
-        update_user_stats(user_id, stats["score"], stats["today_plays"] + 1, datetime.now().date().isoformat())
+        # ОБНОВЛЯЕМ ТОЛЬКО SCORE, today_plays НЕ ТРОГАЕМ!
+        update_user_stats(user_id, stats["score"], stats["today_plays"], datetime.now().date().isoformat())
         mark_question_as_played(user_id, question_id)
-
+        
         rank_up_msg = ""
         if new_rank["min_score"] > old_rank["min_score"]:
             rank_up_msg = f"\n\n🎉 **ПОВЫШЕНИЕ РАНГА!**\n{old_rank['emoji']} {old_rank['name']} → {new_rank['emoji']} {new_rank['name']}"
-
+        
         await query.edit_message_text(
             f"✅ *Правильно!* +{reward} баллов {RARITY_EMOJI_ONLY.get(rarity, '')}{rank_up_msg}\n\n"
             f"🏆 Баллы: {stats['score']}\n"
@@ -440,9 +448,10 @@ async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
     else:
         stats["score"] -= 1
-        update_user_stats(user_id, stats["score"], stats["today_plays"] + 1, datetime.now().date().isoformat())
+        # ОБНОВЛЯЕМ ТОЛЬКО SCORE, today_plays НЕ ТРОГАЕМ!
+        update_user_stats(user_id, stats["score"], stats["today_plays"], datetime.now().date().isoformat())
         mark_question_as_played(user_id, question_id)
-
+        
         correct_answer = q["options"][correct]
         await query.edit_message_text(
             f"❌ *Неправильно!* –1 балл\n\n"
@@ -451,9 +460,8 @@ async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"🎖️ Ранг: {old_rank['emoji']} {old_rank['name']}",
             parse_mode="Markdown"
         )
-
+    
     del context.user_data['quiz_question']
-
 # ===== СТАТИСТИКА =====
 @antispam_decorator
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
