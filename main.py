@@ -357,25 +357,29 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         stats["last_play_date"] = today
         update_user_stats(user_id, stats["score"], 0, today)
     
-    # === ПОПЫТКА ЗАСЧИТЫВАЕТСЯ СРАЗУ ===
     if stats["today_plays"] >= 5:
         await update.message.reply_text("❌ Ты уже прошёл 5 викторин сегодня! Возвращайся завтра.")
         return
     
-    # Увеличиваем счётчик попыток ДО выдачи вопроса
+    # === БЛОКИРУЕМ НОВЫЙ ВЫЗОВ, ЕСЛИ ЕСТЬ АКТИВНЫЙ ВОПРОС ===
+    if context.user_data.get('quiz_question'):
+        await update.message.reply_text("❌ У тебя уже есть активный вопрос! Ответь на него или подожди 5 минут.")
+        return
+    
+    # === ЗАСЧИТЫВАЕМ ПОПЫТКУ ===
     stats["today_plays"] += 1
     update_user_stats(user_id, stats["score"], stats["today_plays"], today)
     
     row = get_random_question(user_id)
     if not row:
-        await update.message.reply_text("📭 В базе нет новых вопросов! Добавь через `/basequiz`", parse_mode="Markdown")
+        await update.message.reply_text("📭 В базе нет новых вопросов! Добавь через /basequiz")
         return
     
     question_id, question, options_raw, correct_option_id, rarity = row
     options = options_raw.split('|||') if options_raw else []
     reward = RARITY_REWARDS.get(rarity, 1)
     
-    context.user_data['quiz_question'] = {
+    quiz_data = {
         "question_id": question_id,
         "question": question,
         "options": options,
@@ -383,6 +387,7 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "reward": reward,
         "rarity": rarity
     }
+    context.user_data['quiz_question'] = quiz_data
     
     keyboard = []
     for i, opt in enumerate(options):
@@ -405,13 +410,13 @@ async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     
-    q = context.user_data.get('quiz_question')
-    if not q:
-        await query.edit_message_text("⏳ Этот вопрос уже неактивен. Напиши /quiz для новой викторины.")
-        return
-    
     user_id = query.from_user.id
     first_name = query.from_user.first_name
+    
+    q = context.user_data.get('quiz_question')
+    if not q:
+        await query.edit_message_text("❌ Викторина не найдена. Попробуй /quiz заново")
+        return
     
     selected = int(query.data.split("_")[-1])
     correct = q["correct_option_id"]
@@ -453,7 +458,6 @@ async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
     
     del context.user_data['quiz_question']
-    context.user_data['quiz_active'] = False
 # ===== СТАТИСТИКА =====
 @antispam_decorator
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
