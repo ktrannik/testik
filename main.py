@@ -295,6 +295,152 @@ def antispam_decorator(func):
         return await func(update, context)
     return wrapper
 
+RP_TRIGGERS = {
+    "чай джейса": {
+        "type": "self",
+        "responses": [
+            "{user} умер от переизбытка маны ☠️",
+            "{user} выпил чай Джейса и почувствовал прилив сил! 🧙"
+        ]
+    },
+    "пузатый лис": {
+        "type": "target",
+        "responses": [
+            "{user} выпил одуванчиковое пиво вместе с {target} 🍺",
+            "{user} и {target} устроили пивную дуэль! 🍻"
+        ]
+    },
+    "тюрьма времени": {
+        "type": "target",
+        "responses": [
+            "{user} запечатал в самой ужасной тюрьме {target} 🔳",
+            "{user} не удалось запечатать {target}! 🤯"
+        ]
+    },
+    "прочесть дневник джодаха": {
+        "type": "self",
+        "responses": [
+            "{user} открыл дневник и ужаснулся от количества поглощённых душ 😨",
+            "{user} открыл дневник, но не смог ничего прочесть из-за шифра 😕 "
+        ]
+    },
+     "обнуление": {
+        "type": "target",
+        "responses": [
+            "{user} понизил до нулевого уровня {target} 🔮 ",
+            "{user} не вышло обнулить из-за пелены {target}! "
+        ]
+    },
+     "отвязка": {
+        "type": "self",
+        "responses": [
+            "{user} успешно отвязался от времени 🕧",
+            "{user} неудачно провел операцию и погиб 💀"
+        ]
+    },
+     "смотрящий": {
+        "type": "self",
+        "responses": [
+            "{user} провел увлекательную беседу со Временем 👀",
+            "{user} посмотрел на Смотрящего и заметил лёгкий интерес в его взгляде 👀",
+            "{user} посмотрел на Смотрящего и заметил безразличие в его взгляде 👀",
+            "{user} посмотрел на Смотрящего и ничего не увидел в его взгляде 👀",
+            "{user} посмотрел на Смотрящего и продрог от холода 👀",
+            "{user} посмотрел на Смотрящего и заметил дружелюбие в его взгляде 👀",
+            "{user} посмотрел на Смотрящего и понял что ему осталось недолго 👀",
+            "{user} посмотрел на Смотрящего и подвергся концентрированному времени👀",
+            
+            
+            
+            
+            
+            
+        ]
+    },
+     "аномалия": {
+        "type": "self",
+        "responses": [
+            "{user} увидел аномалию с Мистером О'Флафферти и был испепелён его лазерами💥 ",
+            "{user} увидел аномалию врат Отправления и даже не обратил внимания 🟣",
+            "{user} увидел аномалию с очками Джона и теперь ходит с модными очками 😎",
+            "{user} увидел аномалию со Смотрящим и повеяло холодом ❄️",
+            "{user} увидел аномалию с отвязкой и едва не погиб от перегрузки 😵‍💫 ",
+            "{user} увидел аномалию с ужасными монстрами и активировал Искру ✴️",
+            "{user} увидел аномалию со скинтонитом и решил взять ее с собой (это была ошибка)❌ ",
+            "{user} увидел аномалию с мечом Путешественника и решил что он идеально подходит для нарезки салата (и не только) ⚔️",
+            "{user} увидел аномалию с Воплощёнными и закрылся в сонном измерении на месяц 🏠 ",
+            "{user} увидел аномалию с масками Первых и на него нахлынули старые воспоминания 🎭 ",
+            "{user} увидел аномалию с взломанным Г.Л.А.С и решил что повременит с белым пространством ⬜️ ",
+            "{user} благодаря аномалии смог узнать имя другого существа и навалял ему 🤩 ",
+            "{user} услышал от Риз очередную чересчур знакомую фразу, что же это может значить? 🤔",
+            "{user} увидел аномалию и переместился в белое пространство 👻 ",
+            "{user} не увидел никаких аномалий ☹️",
+        ]
+    },
+     "трескануть орешки": {
+        "type": "target",
+        "responses": [
+            "{user} потрескал орешки с {target} 🌰 ",
+            "{user} не потрескали орешки с {target} так как белка все украла 😭"
+        ]
+    },
+     "орешки": {
+        "type": "self",
+        "responses": [
+            "{user} покушал орешки биг боб 🌰 ",
+            "{user} не поел орешков биг боб, так как попался гнилой орешек 🤮 "
+        ]
+    },
+     "глорп": {
+        "type": "self",
+        "responses": [
+            "{user} ГЛОООРПНУЛСЯ по полной 🌕",
+            "{user} слегка ГЛОООРПНУЛ 🌘"
+        ]
+    },
+     "видомния": {
+        "type": "target",
+        "responses": [
+            "{user} отправил в Видомнию поганца {target} ☄️ ",
+            "{user} не вышло отправить в Видомнию {target} 🌚"
+        ]
+    },
+     "скинтонит": {
+        "type": "self",
+        "responses": [
+            "{user} адаптировался к влиянию кристаллической пустоты ☸️ ",
+            "{user} не смог справиться с тьмой и превратился в даска 😵 "
+        ]
+    },
+     "скинт": {
+        "type": "self",
+        "responses": [
+            "{user} посидел возле Путеводного скинта и восстановился ☺️",
+            "{user} заразил скинт своей кровью и стал еще сильнее 😈",
+            "{user} был отвергнут Первой Матерью и распался на частицы по бесконечным вселенным 🌪",
+            "{user} съел скинт и увидел будущее своей ветки 👁 ",
+            
+        ]
+    },
+     "очищение": {
+        "type": "target",
+        "responses": [
+            "{user} придал Очищению {target} 🧟 ",
+            "{user} не смог осквернить душу и искру {target} 🛡"
+        ]
+    },
+     "тысяча глаз": {
+        "type": "self",
+        "responses": [
+            "{user} использовал Тысячу Глаз и узрел истинное будущее 👁 ",
+            "{user} не смог использовать Тысячу глаз из-за перешёптывания демонов в голове 👹 ",
+            "{user} использовал Тысячу Глаз, но понял, что никто не способен видеть всех вариантов будущего 😰"
+        ]
+    
+    
+    }
+}
+
 # ===== КОМАНДЫ =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -361,12 +507,17 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ты уже прошёл 5 викторин сегодня! Возвращайся завтра.")
         return
     
-    # === БЛОКИРУЕМ НОВЫЙ ВЫЗОВ, ПОКА НЕ ОТВЕЧЕН СТАРЫЙ ВОПРОС ===
-    if context.user_data.get('quiz_question'):
+    # Проверяем, есть ли активный вопрос У ЭТОГО ПОЛЬЗОВАТЕЛЯ
+    active = context.user_data.get('quiz_question')
+    if active and active.get("user_id") == user_id:
         await update.message.reply_text("❌ У тебя уже есть активный вопрос! Ответь на него, чтобы получить новый.")
         return
     
-    # === ЗАСЧИТЫВАЕМ ПОПЫТКУ ===
+    # Если активный вопрос от другого пользователя — игнорируем
+    if active and active.get("user_id") != user_id:
+        # Не блокируем, просто продолжаем
+        pass
+    
     stats["today_plays"] += 1
     update_user_stats(user_id, stats["score"], stats["today_plays"], today)
     
@@ -380,6 +531,7 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reward = RARITY_REWARDS.get(rarity, 1)
     
     quiz_data = {
+        "user_id": user_id,
         "question_id": question_id,
         "question": question,
         "options": options,
@@ -391,7 +543,8 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = []
     for i, opt in enumerate(options):
-        keyboard.append([InlineKeyboardButton(opt, callback_data=f"quiz_ans_{i}")])
+        button_text = opt[:35] + "…" if len(opt) > 35 else opt
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"quiz_ans_{i}")])
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     rank = get_rank(stats["score"])
@@ -415,9 +568,18 @@ async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     q = context.user_data.get('quiz_question')
     if not q:
-        await query.edit_message_text("❌ Викторина не найдена. Попробуй /quiz заново")
+        # Если вопроса нет — просто игнорируем, ничего не меняем
         return
     
+    # === ЕСЛИ ЧУЖОЙ НАЖАЛ ===
+    if q.get("user_id") != user_id:
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="⛔ Аттатата! Это не твой квиз, проказник! 😡"
+        )
+        return  # Выходим, НЕ ТРОГАЕМ СООБЩЕНИЕ
+    
+    # === ДАЛЬШЕ ДЛЯ ВЛАДЕЛЬЦА ===
     selected = int(query.data.split("_")[-1])
     correct = q["correct_option_id"]
     reward = q.get("reward", 1)
@@ -835,8 +997,15 @@ async def reset_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ===== ОБРАБОТЧИКИ ТЕКСТА И ДОКУМЕНТОВ =====
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    step = context.user_data.get('step')
+     # === RP-ПРОВЕРКА (ПЕРВОЙ) ===
+    text = update.message.text.strip().lower()
+    user_name = update.effective_user.first_name
 
+    for trigger, responses in RP_TRIGGERS.items():
+        if trigger in text:
+            reply = random.choice(responses).replace("{user}", user_name)
+            await update.message.reply_text(reply)
+            return
     # --- Сначала проверяем, не ответ ли на ребус ---
     user_id = update.effective_user.id
     if user_id in active_rebuses:
@@ -1351,6 +1520,159 @@ async def restore_rebus(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if os.path.exists(file_path):
             os.remove(file_path)
 
+async def rp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print("🔥 rp_command ВЫЗВАНА")  # ← ДИАГНОСТИКА
+    print(f"📦 RP_TRIGGERS: {RP_TRIGGERS}")  # ← ЧТО В СЛОВАРЕ
+    
+    if not context.args:
+        await update.message.reply_text("📝 /rp текст")
+        return
+    
+    full_text = " ".join(context.args).lower()
+    print(f"📩 Текст: {full_text}")  # ← ЧТО ПРИШЛО
+    
+    user_name = update.effective_user.first_name
+    target_name = None
+    
+    import re
+    mention_match = re.search(r'@(\w+)', full_text)
+    if mention_match:
+        target_username = mention_match.group(1)
+        try:
+            conn = sqlite3.connect(USERS_DB)
+            c = conn.cursor()
+            c.execute('SELECT first_name FROM users WHERE username LIKE ?', (f'%{target_username}%',))
+            row = c.fetchone()
+            conn.close()
+            if row:
+                target_name = row[0]
+            else:
+                target_name = f"@{target_username}"
+        except:
+            target_name = f"@{target_username}"
+    
+    if not target_name and update.message.reply_to_message:
+        target_user = update.message.reply_to_message.from_user
+        target_name = target_user.first_name or target_user.username or "Кто-то"
+    
+    clean_text = re.sub(r'@\w+', '', full_text).strip()
+    if not clean_text:
+        clean_text = full_text
+    
+    print(f"🔎 Чистый текст: {clean_text}")  # ← ЧТО ИЩЕМ
+    
+    for trigger, data in RP_TRIGGERS.items():
+        print(f"🔍 Проверяю: '{trigger}' в '{clean_text}'")  # ← ПОИСК
+        if trigger in clean_text:
+            print(f"✅ Найдено: {trigger}")  # ← ЕСЛИ НАШЛО
+            rp_type = data.get("type", "self")
+            responses = data["responses"]
+            
+            if rp_type == "self":
+                reply = random.choice(responses).replace("{user}", user_name)
+                reply = reply.replace("{target}", "никого")
+                await update.message.reply_text(reply)
+                return
+            
+            if rp_type == "target":
+                if not target_name:
+                    await update.message.reply_text(
+                        "❌ Для этого действия нужен второй пользователь.\n"
+                        "Укажи @username или ответь на сообщение."
+                    )
+                    return
+                reply = random.choice(responses).replace("{user}", user_name).replace("{target}", target_name)
+                await update.message.reply_text(reply)
+                return
+    
+    print("❌ Ничего не найдено")  # ← ЕСЛИ НЕ НАШЛО
+    await update.message.reply_text("❌ Не нашёл такой RP-фразы")
+
+@antispam_decorator
+async def rplist(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not RP_TRIGGERS:
+        await update.message.reply_text("📭 Список RP-команд пуст.")
+        return
+    
+    # Формируем список всех команд с типами
+    all_commands = []
+    for trigger, data in RP_TRIGGERS.items():
+        rp_type = data.get("type", "self")
+        label = "👤" if rp_type == "self" else "👥"
+        all_commands.append(f"{label} `{trigger}`")
+    
+    # Сохраняем в context для пагинации
+    context.user_data['rp_list'] = all_commands
+    
+    page_size = 10
+    total_pages = (len(all_commands) + page_size - 1) // page_size
+    page = 0
+    
+    start = page * page_size
+    end = min(start + page_size, len(all_commands))
+    
+    message = f"📋 *RP-команды (👤 - личная команда, 👥 - интерактивная команда)  (стр. {page + 1}/{total_pages})*\n\n"
+    message += "\n".join(all_commands[start:end])
+    message += "\n\n📝 `/rp текст` — использовать команду"
+    
+    keyboard = []
+    nav_row = []
+    if total_pages > 1:
+        if page > 0:
+            nav_row.append(InlineKeyboardButton("◀️ Назад", callback_data=f"rplist_{page - 1}"))
+        if page < total_pages - 1:
+            nav_row.append(InlineKeyboardButton("Вперёд ▶️", callback_data=f"rplist_{page + 1}"))
+        if nav_row:
+            keyboard.append(nav_row)
+    
+    reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+    
+    await update.message.reply_text(message, parse_mode="Markdown", reply_markup=reply_markup)
+
+async def rplist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    page = int(query.data.split("_")[1])
+    
+    # Берём список из context
+    all_commands = context.user_data.get('rp_list', [])
+    if not all_commands:
+        # Если список потерялся — пересобираем
+        for trigger, data in RP_TRIGGERS.items():
+            rp_type = data.get("type", "self")
+            label = "👤" if rp_type == "self" else "👥"
+            all_commands.append(f"{label} `{trigger}`")
+        context.user_data['rp_list'] = all_commands
+    
+    page_size = 10
+    total_pages = (len(all_commands) + page_size - 1) // page_size
+    
+    if page < 0:
+        page = 0
+    if page >= total_pages:
+        page = total_pages - 1
+    
+    start = page * page_size
+    end = min(start + page_size, len(all_commands))
+    
+    message = f"📋 *RP-команды (👤 - личная команда, 👥 - интерактивная команда) (стр. {page + 1}/{total_pages})*\n\n"
+    message += "\n".join(all_commands[start:end])
+    message += "\n\n📝 `/rp текст` — использовать команду"
+    
+    keyboard = []
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("◀️ Назад", callback_data=f"rplist_{page - 1}"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton("Вперёд ▶️", callback_data=f"rplist_{page + 1}"))
+    if nav_row:
+        keyboard.append(nav_row)
+    
+    reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+    
+    await query.edit_message_text(message, parse_mode="Markdown", reply_markup=reply_markup)
+
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
     init_user_db()
@@ -1384,6 +1706,9 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("editrebus", editrebus))
     app.add_handler(CommandHandler("backup_rebus", backup_rebus))
     app.add_handler(CommandHandler("restore_rebus", restore_rebus))
+    app.add_handler(CommandHandler("rp", rp_command))
+    app.add_handler(CommandHandler("rplist", rplist))
+    app.add_handler(CallbackQueryHandler(rplist_callback, pattern="rplist_"))
 
     print("✅ Бот запущен!")
     app.run_polling()
