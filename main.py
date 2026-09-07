@@ -628,7 +628,7 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     row = get_random_question(user_id)
     if not row:
-        await update.message.reply_text("📭 В базе нет новых вопросов! Добавь через /basequiz")
+        await update.message.reply_text("📭 Викторин нет в базе! Видимо я на перезагрузке")
         return
     
     question_id, question, options_raw, correct_option_id, rarity = row
