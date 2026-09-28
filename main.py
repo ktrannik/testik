@@ -13,7 +13,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 
 # ===== РЕБУСЫ =====
 from rebus import expression_to_blocks, draw_rebus_from_blocks, load_dictionary, split_into_parts, find_image_case_insensitive
-
+1
 # ===== НАСТРОЙКИ =====
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = 5206039766
