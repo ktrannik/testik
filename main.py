@@ -18,8 +18,8 @@ TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = 5206039766
 QUIZ_FILE = "quizzes.json"
 MEMES_FILE = "memes.json"
-BASE_QUIZZES_DB = "base_quizzes.db"
-USERS_DB = "quiz_users.db"
+BASE_QUIZZES_DB = "/app/data/base_quizzes.db"
+USERS_DB = "/app/data/quiz_users.db"
 
 # Хранилище активных ребусов
 active_rebuses = {}
