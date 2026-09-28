@@ -617,7 +617,7 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if active and active.get("user_id") == user_id:
         # Проверяем, не устарел ли вопрос (4 часа)
         quiz_time = active.get("start_time", 0)
-        if time.time() - quiz_time < 14400:  # 4 часа = 14400 секунд
+        if time.time() - quiz_time < 60:  # 4 часа = 14400 секунд
             await update.message.reply_text("❌ У тебя уже есть активный вопрос! Ответь на него или подожди 4 часа.")
             return
         else:
