@@ -18,8 +18,8 @@ from rebus import expression_to_blocks, draw_rebus_from_blocks, load_dictionary,
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = 5206039766
 MEMES_FILE = "memes.json"
-BASE_QUIZZES_DB = "/app/data/base_quizzes.db"
-USERS_DB = "/app/data/quiz_users.db"
+BASE_QUIZZES_DB = "/app/data/base_qu1zzes.db"
+USERS_DB = "/app/data/qu1z_users.db"
 
 active_rebuses = {}
 
