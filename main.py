@@ -598,7 +598,7 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if active and active.get("user_id") == user_id:
         quiz_time = active.get("start_time", 0)
         if time.time() - quiz_time < 14400:
-            await update.message.reply_text("❌ У тебя уже есть активный вопрос! Ответь на него или подожди 4 часа.")
+            await update.message.reply_text("❌ У тебя уже есть активный вопрос! Ответь на него или подожди 4 часа если потерял(-а-) вопрос")
             return
         else:
             del context.user_data['quiz_question']
@@ -608,7 +608,7 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     row = get_random_question(user_id)
     if not row:
-        await update.message.reply_text("❌ Сегодня ты прошёл все доступные викторины! Возвращайся завтра.")
+        await update.message.reply_text("❌ Сегодня ты забрал(-а-) все доступные викторины! Возвращайся завтра.")
         return
     
     question_id, question, options_raw, correct_option_id, rarity = row
