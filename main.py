@@ -591,7 +591,7 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update_user_stats(user_id, stats["score"], 0, today)
     
     if stats["today_plays"] >= 5:
-        await update.message.reply_text("❌ Ты уже прошёл 5 викторин сегодня! Возвращайся завтра.")
+        await update.message.reply_text("❌ Ты уже забрал(-а-) 5 викторин сегодня! Возвращайся завтра.")
         return
     
     active = context.user_data.get('quiz_question')
