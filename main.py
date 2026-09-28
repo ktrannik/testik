@@ -615,8 +615,14 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Проверяем, есть ли активный вопрос У ЭТОГО ПОЛЬЗОВАТЕЛЯ
     active = context.user_data.get('quiz_question')
     if active and active.get("user_id") == user_id:
-        await update.message.reply_text("❌ У тебя уже есть активный вопрос! Ответь на него, чтобы получить новый.")
-        return
+        # Проверяем, не устарел ли вопрос (4 часа)
+        quiz_time = active.get("start_time", 0)
+        if time.time() - quiz_time < 14400:  # 4 часа = 14400 секунд
+            await update.message.reply_text("❌ У тебя уже есть активный вопрос! Ответь на него или подожди 4 часа.")
+            return
+        else:
+            # Вопрос устарел — сбрасываем
+            del context.user_data['quiz_question']
     
     stats["today_plays"] += 1
     update_user_stats(user_id, stats["score"], stats["today_plays"], today)
@@ -637,7 +643,8 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "options": options,
         "correct_option_id": correct_option_id,
         "reward": reward,
-        "rarity": rarity
+        "rarity": rarity,
+        "start_time": time.time()
     }
     context.user_data['quiz_question'] = quiz_data
     
@@ -691,6 +698,13 @@ async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
             text="⛔ Аттатата! Это не твой квиз, проказник! 😡"
         )
         return  # Выходим, НЕ ТРОГАЕМ СООБЩЕНИЕ
+    
+    # === ПРОВЕРКА: НЕ УСТАРЕЛ ЛИ ВОПРОС (4 часа) ===
+    quiz_time = q.get("start_time", 0)
+    if time.time() - quiz_time >= 14400:
+        del context.user_data['quiz_question']
+        await query.edit_message_text("⏳ Вопрос устарел (прошло больше 4 часов). Напиши /quiz для новой викторины.")
+        return
     
     # === ДАЛЬШЕ ДЛЯ ВЛАДЕЛЬЦА ===
     selected = int(query.data.split("_")[-1])
